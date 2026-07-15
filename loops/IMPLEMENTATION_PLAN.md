@@ -13,8 +13,8 @@
 
 ## Phase 3: Risk Detection + Readiness Score
 - [x] Create `risk_triggers.py` — a keyword→flag dict covering: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD.
-- [ ] Implement a readiness score (0–100): start at 100, deduct points for each missing/vague field and each risk flag without a mitigation.
-- [ ] Display the score as a `st.progress` bar with a breakdown table showing which items cost points.
+- [x] Implement a readiness score (0–100): start at 100, deduct points for each missing/vague field and each risk flag without a mitigation.
+- [x] Display the score as a `st.progress` bar with a breakdown table showing which items cost points.
 
 ## Phase 4: Artifact Generation Tabs
 - [ ] Add four LLM calls to generate: IBM Placemat (structured markdown), PoC Checklist (checkbox list), Architecture summary (component list), Kickoff email draft.

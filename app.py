@@ -2,6 +2,7 @@ import os
 import io
 import streamlit as st
 from dotenv import load_dotenv
+from risk_triggers import get_risk_severity
 
 load_dotenv()
 
@@ -71,6 +72,97 @@ def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
             "readiness": "Needs clarification",
             "summary": "Unable to parse gap analysis response"
         }
+
+
+def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
+    """
+    Calculate PoC readiness score (0-100) based on data completeness and risk detection.
+    
+    Scoring logic:
+    - Start at 100 points
+    - Deduct points for missing/empty critical fields
+    - Deduct points for detected risks without mitigation plans
+    
+    Returns:
+        dict with keys: score (int), breakdown (list of deduction items), detected_risks (dict)
+    """
+    from risk_triggers import detect_risks, get_risk_severity
+    
+    score = 100
+    breakdown = []
+    
+    # Check critical fields for completeness
+    stakeholders = extracted_data.get("stakeholders", [])
+    if not stakeholders:
+        score -= 15
+        breakdown.append({"item": "No stakeholders identified", "points": -15, "category": "Missing Data"})
+    
+    use_cases = extracted_data.get("use_cases", [])
+    if not use_cases:
+        score -= 20
+        breakdown.append({"item": "No use cases defined", "points": -20, "category": "Missing Data"})
+    elif any(not uc.get("description") or uc.get("description") == "No description" for uc in use_cases):
+        score -= 10
+        breakdown.append({"item": "Use case descriptions incomplete", "points": -10, "category": "Vague Data"})
+    
+    success_criteria = extracted_data.get("success_criteria", [])
+    if not success_criteria:
+        score -= 15
+        breakdown.append({"item": "No success criteria defined", "points": -15, "category": "Missing Data"})
+    
+    deployment_env = extracted_data.get("deployment_env", {})
+    cloud_provider = deployment_env.get("cloud_provider", "Unknown")
+    if cloud_provider == "Unknown" or not cloud_provider:
+        score -= 10
+        breakdown.append({"item": "Deployment environment unclear", "points": -10, "category": "Vague Data"})
+    
+    integrations = extracted_data.get("integrations", [])
+    if integrations and any(not i.get("purpose") or i.get("purpose") == "No purpose specified" for i in integrations):
+        score -= 5
+        breakdown.append({"item": "Integration purposes unclear", "points": -5, "category": "Vague Data"})
+    
+    # Detect risks from meeting notes
+    detected_risks = detect_risks(notes_text)
+    
+    # Check if risks have mitigation plans
+    extracted_risks = extracted_data.get("risks", [])
+    extracted_risk_texts = [r.get("risk", "").lower() for r in extracted_risks]
+    
+    for risk_category, keywords in detected_risks.items():
+        severity = get_risk_severity(risk_category)
+        
+        # Check if this risk category is mentioned in extracted risks
+        has_mitigation = any(
+            risk_category.lower() in risk_text or 
+            any(kw in risk_text for kw in keywords)
+            for risk_text in extracted_risk_texts
+        )
+        
+        if not has_mitigation:
+            # Deduct points based on severity
+            if severity == "High":
+                deduction = 10
+            elif severity == "Medium":
+                deduction = 5
+            else:
+                deduction = 3
+            
+            score -= deduction
+            breakdown.append({
+                "item": f"{risk_category} detected but no mitigation plan",
+                "points": -deduction,
+                "category": "Unmitigated Risk",
+                "severity": severity
+            })
+    
+    # Ensure score doesn't go below 0
+    score = max(0, score)
+    
+    return {
+        "score": score,
+        "breakdown": breakdown,
+        "detected_risks": detected_risks
+    }
 
 
 # ── file parsers ──────────────────────────────────────────────────────────────
@@ -317,11 +409,87 @@ def main():
                     "readiness": "Needs clarification",
                     "summary": "Gap check unavailable"
                 }
+        
+        # Calculate readiness score
+        with st.spinner("Calculating readiness score…"):
+            try:
+                score_data = calculate_readiness_score(st.session_state["extracted_data"], notes_text)
+                st.session_state["readiness_score"] = score_data
+            except Exception as e:
+                st.warning(f"Readiness score calculation failed: {e}")
+                # Continue with default score
+                st.session_state["readiness_score"] = {
+                    "score": 50,
+                    "breakdown": [{"item": "Score calculation unavailable", "points": -50, "category": "Error"}],
+                    "detected_risks": {}
+                }
 
     # ── results ───────────────────────────────────────────────────────────────
     if "extracted_data" in st.session_state:
         st.divider()
         data = st.session_state["extracted_data"]
+        
+        # Display readiness score
+        if "readiness_score" in st.session_state:
+            score_data = st.session_state["readiness_score"]
+            score = score_data["score"]
+            breakdown = score_data["breakdown"]
+            detected_risks = score_data["detected_risks"]
+            
+            st.subheader("📊 PoC Readiness Score")
+            
+            # Progress bar with color coding
+            if score >= 80:
+                st.success(f"**Score: {score}/100** — Ready to proceed")
+            elif score >= 60:
+                st.warning(f"**Score: {score}/100** — Needs some clarification")
+            else:
+                st.error(f"**Score: {score}/100** — Significant gaps to address")
+            
+            st.progress(score / 100)
+            
+            # Breakdown table
+            if breakdown:
+                with st.expander("📉 Score breakdown — what reduced the score", expanded=True):
+                    st.markdown("**Point deductions:**")
+                    
+                    # Group by category
+                    categories = {}
+                    for item in breakdown:
+                        cat = item.get("category", "Other")
+                        if cat not in categories:
+                            categories[cat] = []
+                        categories[cat].append(item)
+                    
+                    # Display by category
+                    for category, items in categories.items():
+                        st.markdown(f"**{category}:**")
+                        for item in items:
+                            points = item["points"]
+                            description = item["item"]
+                            severity = item.get("severity", "")
+                            severity_emoji = ""
+                            if severity == "High":
+                                severity_emoji = "🔴 "
+                            elif severity == "Medium":
+                                severity_emoji = "🟡 "
+                            elif severity == "Low":
+                                severity_emoji = "🟢 "
+                            
+                            st.markdown(f"- {severity_emoji}{description}: **{points} points**")
+                        st.markdown("")
+            
+            # Display detected risks
+            if detected_risks:
+                with st.expander(f"⚠️ Detected risks ({len(detected_risks)} categories)", expanded=False):
+                    st.markdown("**Risk triggers found in meeting notes:**")
+                    for risk_category, keywords in detected_risks.items():
+                        severity = get_risk_severity(risk_category)
+                        severity_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                        st.markdown(f"{severity_emoji} **{risk_category}** ({severity})")
+                        st.markdown(f"  - Keywords: {', '.join(keywords[:5])}")
+            
+            st.divider()
         
         # Display gap check results
         if "gap_check" in st.session_state:

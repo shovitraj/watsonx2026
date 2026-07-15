@@ -85,3 +85,41 @@ _Each iteration appends one entry here._
 - `loops/PROGRESS.md` — this file
 
 **Next task:** Phase 3.2 — Implement readiness score (0-100) with point deductions and progress bar display
+
+---
+
+## Iteration 4 — 2026-07-15
+
+**Task completed:** Phase 3.2 — Implement readiness score (0-100) with point deductions and progress bar display
+
+**Changes made:**
+- Added `calculate_readiness_score()` function in `app.py` that:
+  - Starts at 100 points
+  - Deducts 15 points for missing stakeholders
+  - Deducts 20 points for missing use cases, 10 for incomplete descriptions
+  - Deducts 15 points for missing success criteria
+  - Deducts 10 points for unclear deployment environment
+  - Deducts 5 points for unclear integration purposes
+  - Deducts 3-10 points per unmitigated risk (based on severity: High=10, Medium=5, Low=3)
+- Integrated score calculation into analysis flow (runs after gap check)
+- Added readiness score display section with:
+  - Color-coded status banner (green ≥80, yellow ≥60, red <60)
+  - Progress bar visualization
+  - Expandable breakdown table grouped by category (Missing Data, Vague Data, Unmitigated Risk)
+  - Severity emoji indicators for risk-related deductions (🔴 High, 🟡 Medium, 🟢 Low)
+  - Detected risks summary showing risk categories and matched keywords
+- Imported `get_risk_severity` from `risk_triggers.py` for display logic
+
+**Key decisions:**
+- Score calculation uses `risk_triggers.py` to detect risks from meeting notes text
+- Cross-references detected risks with extracted risks to identify unmitigated items
+- Breakdown grouped by category for clarity (Missing Data, Vague Data, Unmitigated Risk)
+- Score display positioned before gap check results (most important metric first)
+- Graceful fallback to score=50 if calculation fails
+
+**Files changed:**
+- `app.py` — added calculate_readiness_score() function, integrated into flow, added display UI
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 3 tasks complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 4 — Artifact Generation Tabs (add four LLM calls for IBM Placemat, PoC Checklist, Architecture summary, Kickoff email)
