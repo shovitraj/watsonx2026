@@ -17,8 +17,8 @@
 - [x] Display the score as a `st.progress` bar with a breakdown table showing which items cost points.
 
 ## Phase 4: Artifact Generation Tabs
-- [ ] Add four LLM calls to generate: IBM Placemat (structured markdown), PoC Checklist (checkbox list), Architecture summary (component list), Kickoff email draft.
-- [ ] Display each artifact in its own `st.tab`.
+- [x] Add four LLM calls to generate: IBM Placemat (structured markdown), PoC Checklist (checkbox list), Architecture summary (component list), Kickoff email draft.
+- [x] Display each artifact in its own `st.tab`.
 - [ ] Replace the single download button with a ZIP download containing all four artifacts as `.md` files.
 
 ## Phase 5: Polish + Sample Transcript + TechZone Button

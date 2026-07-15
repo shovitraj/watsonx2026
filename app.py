@@ -165,6 +165,62 @@ def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
     }
 
 
+def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
+    """
+    Generate all four PoC artifacts from extracted data.
+    
+    Returns:
+        dict with keys: placemat, checklist, architecture, email (all strings)
+    """
+    import json
+    
+    extracted_json = json.dumps(extracted_data, indent=2)
+    
+    artifacts = {}
+    
+    # Generate IBM Placemat
+    try:
+        artifacts["placemat"] = call_watsonx(
+            PLACEMAT_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=2000
+        )
+    except Exception as e:
+        artifacts["placemat"] = f"Error generating placemat: {e}"
+    
+    # Generate PoC Checklist
+    try:
+        artifacts["checklist"] = call_watsonx(
+            CHECKLIST_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=1500
+        )
+    except Exception as e:
+        artifacts["checklist"] = f"Error generating checklist: {e}"
+    
+    # Generate Architecture Summary
+    try:
+        artifacts["architecture"] = call_watsonx(
+            ARCHITECTURE_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=1500
+        )
+    except Exception as e:
+        artifacts["architecture"] = f"Error generating architecture: {e}"
+    
+    # Generate Kickoff Email
+    try:
+        artifacts["email"] = call_watsonx(
+            EMAIL_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=800
+        )
+    except Exception as e:
+        artifacts["email"] = f"Error generating email: {e}"
+    
+    return artifacts
+
+
 # ── file parsers ──────────────────────────────────────────────────────────────
 
 def parse_txt(file) -> str:
@@ -276,6 +332,176 @@ Rules:
 - Each question should be specific and actionable
 - Use "Ready" only if all critical fields are complete and clear
 - Use "Blocked" if multiple critical fields are missing
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+PLACEMAT_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer creating an IBM Placemat document for a Discovery PoC.
+
+Generate a structured IBM Placemat in markdown format based on the extracted discovery data below.
+
+The Placemat should include these sections:
+
+# IBM watsonx Discovery PoC — [Client Name]
+
+## Executive Summary
+Brief 2-3 sentence overview of the engagement
+
+## Stakeholders
+List key stakeholders with roles and organizations
+
+## Business Objectives
+What the client wants to achieve (from use cases)
+
+## Use Cases
+Detailed description of each use case with expected outcomes
+
+## Technical Architecture
+- Deployment environment (cloud provider, region)
+- Required integrations
+- Authentication/SSO requirements
+
+## Success Criteria
+Measurable outcomes that define PoC success
+
+## Risks & Mitigation
+Identified risks with severity and mitigation strategies
+
+## Next Steps
+Action items with owners and due dates
+
+Rules:
+- Use proper markdown formatting (headers, lists, bold)
+- Be professional and concise
+- Extract client name from stakeholders if available, otherwise use "Client"
+- Return ONLY the markdown document — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+CHECKLIST_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer creating a PoC Checklist for a Discovery engagement.
+
+Generate a comprehensive PoC checklist in markdown format with checkboxes based on the extracted data below.
+
+The checklist should cover:
+
+# watsonx PoC Checklist
+
+## Pre-PoC Setup
+- [ ] Stakeholder kickoff meeting scheduled
+- [ ] Access credentials obtained
+- [ ] Development environment provisioned
+- [ ] [Add items based on deployment_env and integrations]
+
+## Technical Requirements
+- [ ] [Items based on integrations, SSO, data sources]
+
+## Use Case Implementation
+- [ ] [One checkbox per use case with key deliverables]
+
+## Testing & Validation
+- [ ] [Items based on success criteria]
+
+## Risk Mitigation
+- [ ] [One checkbox per identified risk]
+
+## Documentation & Handoff
+- [ ] Architecture documentation complete
+- [ ] User guide created
+- [ ] Handoff meeting scheduled
+
+Rules:
+- Use markdown checkbox format: - [ ] Item
+- Be specific and actionable
+- Include 15-25 items total
+- Group related items under headers
+- Return ONLY the markdown checklist — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+ARCHITECTURE_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Architect creating a technical architecture summary for a Discovery PoC.
+
+Generate a concise architecture summary in markdown format based on the extracted data below.
+
+The summary should include:
+
+# Technical Architecture Summary
+
+## Deployment Environment
+- Cloud Provider: [from deployment_env]
+- Region: [from deployment_env]
+- Constraints: [from deployment_env]
+
+## Core Components
+- watsonx.ai foundation models
+- [List other IBM watsonx components needed based on use cases]
+
+## Integration Points
+[List each integration with purpose and data flow]
+
+## Authentication & Security
+[SSO/IdP requirements, security considerations from risks]
+
+## Data Flow
+[High-level description of how data moves through the system]
+
+## Scalability Considerations
+[Based on use cases and deployment environment]
+
+Rules:
+- Be technical but concise
+- Focus on IBM watsonx components
+- Include integration architecture
+- Mention security/compliance requirements from risks
+- Return ONLY the markdown document — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+EMAIL_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer drafting a kickoff email for a Discovery PoC.
+
+Generate a professional kickoff email based on the extracted data below.
+
+The email should:
+- Have a clear subject line
+- Thank attendees for the discovery meeting
+- Summarize key points discussed
+- List next steps with owners and dates
+- Set expectations for the PoC timeline
+- Include a professional closing
+
+Format:
+Subject: [Appropriate subject line]
+
+[Email body]
+
+Rules:
+- Professional but friendly tone
+- 200-300 words
+- Include specific names from stakeholders
+- Reference specific use cases discussed
+- Return ONLY the email text — no preamble, no code fences
 
 <|user|>
 Extracted data:
@@ -530,6 +756,69 @@ def main():
                         st.rerun()
                 st.info("👆 Review the extraction above, then confirm to proceed with artifact generation.")
                 st.divider()
+        
+        # Generate and display artifacts (only after confirmation)
+        if st.session_state.get("confirmed"):
+            # Generate artifacts if not already generated
+            if "artifacts" not in st.session_state:
+                with st.spinner("Generating PoC artifacts from watsonx…"):
+                    try:
+                        artifacts = generate_artifacts(data, model_id=selected_model)
+                        st.session_state["artifacts"] = artifacts
+                    except Exception as e:
+                        st.error(f"Failed to generate artifacts: {e}")
+                        st.stop()
+            
+            # Display artifacts in tabs
+            st.divider()
+            st.subheader("📄 Generated PoC Artifacts")
+            
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📋 IBM Placemat",
+                "✅ PoC Checklist", 
+                "🏗️ Architecture",
+                "📧 Kickoff Email"
+            ])
+            
+            artifacts = st.session_state["artifacts"]
+            
+            with tab1:
+                st.markdown(artifacts.get("placemat", "No placemat generated"))
+                st.download_button(
+                    "⬇️ Download Placemat (.md)",
+                    data=artifacts.get("placemat", ""),
+                    file_name="ibm_placemat.md",
+                    mime="text/markdown",
+                )
+            
+            with tab2:
+                st.markdown(artifacts.get("checklist", "No checklist generated"))
+                st.download_button(
+                    "⬇️ Download Checklist (.md)",
+                    data=artifacts.get("checklist", ""),
+                    file_name="poc_checklist.md",
+                    mime="text/markdown",
+                )
+            
+            with tab3:
+                st.markdown(artifacts.get("architecture", "No architecture generated"))
+                st.download_button(
+                    "⬇️ Download Architecture (.md)",
+                    data=artifacts.get("architecture", ""),
+                    file_name="architecture_summary.md",
+                    mime="text/markdown",
+                )
+            
+            with tab4:
+                st.markdown(artifacts.get("email", "No email generated"))
+                st.download_button(
+                    "⬇️ Download Email (.txt)",
+                    data=artifacts.get("email", ""),
+                    file_name="kickoff_email.txt",
+                    mime="text/plain",
+                )
+            
+            st.divider()
         
         # Display extracted fields in expander cards
         with st.expander("👥 Stakeholders", expanded=True):

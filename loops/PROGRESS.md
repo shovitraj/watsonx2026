@@ -123,3 +123,45 @@ _Each iteration appends one entry here._
 - `loops/PROGRESS.md` — this file
 
 **Next task:** Phase 4 — Artifact Generation Tabs (add four LLM calls for IBM Placemat, PoC Checklist, Architecture summary, Kickoff email)
+
+---
+
+## Iteration 5 — 2026-07-15
+
+**Task completed:** Phase 4.1 & 4.2 — Artifact Generation and Tab Display
+
+**Changes made:**
+- Added 4 new LLM prompts for artifact generation:
+  - `PLACEMAT_PROMPT` — generates IBM Placemat with executive summary, stakeholders, objectives, architecture, risks, next steps
+  - `CHECKLIST_PROMPT` — generates PoC checklist with 15-25 actionable items grouped by phase
+  - `ARCHITECTURE_PROMPT` — generates technical architecture summary with components, integrations, security
+  - `EMAIL_PROMPT` — generates professional kickoff email with subject line and next steps
+- Implemented `generate_artifacts()` function that:
+  - Takes extracted JSON data and model ID
+  - Makes 4 separate watsonx calls (one per artifact)
+  - Returns dict with all 4 artifacts
+  - Handles errors gracefully per artifact
+- Integrated artifact generation into UI flow:
+  - Only generates after user clicks "Confirm and continue"
+  - Shows spinner during generation
+  - Caches artifacts in session state (no regeneration on rerun)
+- Added 4-tab display using `st.tabs()`:
+  - Tab 1: IBM Placemat (markdown)
+  - Tab 2: PoC Checklist (markdown with checkboxes)
+  - Tab 3: Architecture Summary (markdown)
+  - Tab 4: Kickoff Email (text)
+- Each tab has its own download button (.md or .txt format)
+
+**Key decisions:**
+- Generate all 4 artifacts in one batch (better UX than 4 separate buttons)
+- Cache artifacts in session state to avoid regeneration on tab switches
+- Individual download buttons per artifact (ZIP download deferred to next iteration)
+- Error handling per artifact (one failure doesn't block others)
+- Token limits: 2000 for placemat, 1500 for checklist/architecture, 800 for email
+
+**Files changed:**
+- `app.py` — added 4 prompts, generate_artifacts() function, tab display UI
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 4.1 and 4.2 complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 4.3 — Replace individual download buttons with ZIP download containing all four artifacts
