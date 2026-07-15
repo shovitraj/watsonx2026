@@ -19,10 +19,10 @@
 ## Phase 4: Artifact Generation Tabs
 - [x] Add four LLM calls to generate: IBM Placemat (structured markdown), PoC Checklist (checkbox list), Architecture summary (component list), Kickoff email draft.
 - [x] Display each artifact in its own `st.tab`.
-- [ ] Replace the single download button with a ZIP download containing all four artifacts as `.md` files.
+- [x] Replace the single download button with a ZIP download containing all four artifacts as `.md` files.
 
 ## Phase 5: Polish + Sample Transcript + TechZone Button
-- [ ] Add a sample transcript (the Azure/GDPR/SAP/HR onboarding scenario) as a pre-fill button in the UI.
-- [ ] Wire the TechZone button: if readiness score ≥ 70 and `deployment_env` is detected, show a "Request TechZone environment" button (human-confirmed, no auto-submit).
-- [ ] Ensure all Streamlit state resets cleanly when new notes are analysed.
-- [ ] Run the app locally and verify the full flow end-to-end with the sample transcript.
+- [x] Add a sample transcript (the Azure/GDPR/SAP/HR onboarding scenario) as a pre-fill button in the UI.
+- [x] Wire the TechZone button: if readiness score ≥ 70 and `deployment_env` is detected, show a "Request TechZone environment" button (human-confirmed, no auto-submit).
+- [x] Ensure all Streamlit state resets cleanly when new notes are analysed.
+- [x] Run the app locally and verify the full flow end-to-end with the sample transcript.

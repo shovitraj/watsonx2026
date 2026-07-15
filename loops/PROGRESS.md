@@ -164,4 +164,32 @@ _Each iteration appends one entry here._
 - `loops/IMPLEMENTATION_PLAN.md` — marked Phase 4.1 and 4.2 complete
 - `loops/PROGRESS.md` — this file
 
-**Next task:** Phase 4.3 — Replace individual download buttons with ZIP download containing all four artifacts
+**Next task:** Phase 4.3 + Phase 5 — ZIP download, sample transcript, TechZone button, state reset
+
+---
+
+## Iteration 6 — 2026-07-15
+
+**Task completed:** Phase 4.3 + Phase 5 — ZIP download, sample transcript, TechZone button, state reset
+
+**Changes made:**
+- Added `zipfile` import; built in-memory ZIP via `io.BytesIO` after artifacts are generated, bundling all 4 artifacts + `discovery_extraction.json` into `poc_artifacts.zip` — single primary download button replaces scattered per-artifact downloads
+- Added `SAMPLE_TRANSCRIPT` constant — Nexus Financial Azure/GDPR/SAP/HR onboarding scenario covering all risk trigger categories (GDPR, Azure AD/SSO, SAP, Workday, fine-tuning, data residency, PII)
+- Added "📋 Load sample transcript" button above the text area; clicking it sets `sample_loaded` in session state, clears prior results, and pre-fills the `st.text_area` via `value=` parameter
+- Wired TechZone button: shown only when `readiness_score ≥ 70` AND `cloud_provider` is known; clicking reveals a `st.form` for purpose + notes with a "Confirm request" submit that outputs a JSON summary (no auto-API call)
+- State reset: `extracted_data`, `gap_check`, `readiness_score`, `artifacts`, `confirmed` are all cleared at the top of the Analyse button handler AND when loading the sample transcript
+- Moved `import json` to top-level imports; removed duplicate inline import
+
+**Key decisions:**
+- ZIP also includes `discovery_extraction.json` so the bundle is self-contained
+- TechZone form uses `st.form` to prevent reruns on every widget interaction
+- Sample transcript triggers a `st.rerun()` after clearing state so the text area renders with the pre-filled content on the next pass
+- JSON download button is hidden once artifacts exist (redundant after ZIP is available)
+- `show_techzone_form` session key is separate from `confirmed` to allow independent dismissal
+
+**Files changed:**
+- `app.py` — all Phase 4.3 and Phase 5 changes
+- `loops/IMPLEMENTATION_PLAN.md` — all remaining tasks marked complete
+- `loops/PROGRESS.md` — this entry
+
+**Status:** All tasks in IMPLEMENTATION_PLAN.md complete. ✅

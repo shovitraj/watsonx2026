@@ -1,5 +1,8 @@
-import os
 import io
+import json
+import os
+import zipfile
+
 import streamlit as st
 from dotenv import load_dotenv
 from risk_triggers import get_risk_severity
@@ -510,6 +513,53 @@ Extracted data:
 """
 
 
+# ── sample transcript ─────────────────────────────────────────────────────────
+
+SAMPLE_TRANSCRIPT = """\
+Meeting Notes — Discovery Call
+Date: 2026-07-14
+Attendees: Sarah Chen (VP Digital Transformation, Nexus Financial), \
+Marcus Rowe (Enterprise Architect, Nexus Financial), \
+Priya Nair (IBM Client Engineer), \
+Tom Walsh (IBM Account Executive)
+
+--- Discussion ---
+
+Sarah opened by explaining Nexus Financial's strategic priority for FY27: automating \
+HR onboarding and employee support using AI. They have ~4,000 employees across Europe \
+and North America. Current onboarding takes 3-4 weeks; target is under 5 days.
+
+Use Cases:
+1. HR Onboarding Assistant — answer new-hire questions (benefits, policies, IT setup), \
+   integrate with Workday for employee data and SAP SuccessFactors for policy documents.
+2. Employee Helpdesk Chatbot — handle IT and HR tier-1 tickets, route complex issues \
+   to ServiceNow, reduce helpdesk call volume by 40%.
+
+Marcus raised infrastructure constraints: Nexus Financial is Azure-first, West Europe \
+region, with strict GDPR compliance requirements. All PII must stay in EU. They use \
+Azure Active Directory for SSO. No on-premise systems will be involved, but they need \
+data residency guarantees. Marcus also asked about model fine-tuning capabilities.
+
+Sarah flagged a concern: they had a previous AI vendor fail to deliver; leadership \
+needs to see measurable ROI within 90 days of PoC start.
+
+Success criteria discussed:
+- Onboarding assistant answers 80% of new-hire questions without human escalation
+- Helpdesk chatbot deflects 40% of tier-1 tickets
+- PoC delivered and demoed within 8 weeks
+
+Risks noted by Marcus:
+- GDPR data residency — all data must remain in EU
+- Azure AD integration complexity (they use conditional access policies)
+- SAP SuccessFactors API rate limits may affect document retrieval
+
+Action items:
+- Priya to send watsonx.ai architecture proposal by July 22
+- Marcus to share Azure AD tenant details and API credentials for SAP by July 19
+- Sarah to confirm executive sponsor for PoC kickoff meeting
+- Tom to arrange TechZone environment provisioning on IBM Cloud, Frankfurt region
+"""
+
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
 def check_env() -> bool:
@@ -568,8 +618,20 @@ def main():
     notes_text = ""
 
     if input_method == "✏️ Paste text":
+        # Sample transcript pre-fill
+        col_pre, _ = st.columns([1, 3])
+        with col_pre:
+            if st.button("📋 Load sample transcript", help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
+                st.session_state["sample_loaded"] = True
+                # Clear any previous analysis when loading sample
+                for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        default_text = SAMPLE_TRANSCRIPT if st.session_state.get("sample_loaded") else ""
         notes_text = st.text_area(
             "Paste your meeting notes here",
+            value=default_text,
             height=280,
             placeholder="e.g. Attendees: Alice, Bob, Carol\n\nAlice presented Q3 results...",
         )
@@ -594,9 +656,11 @@ def main():
     st.divider()
     analyse_disabled = not notes_text.strip()
     if st.button("🔍 Analyse", type="primary", disabled=analyse_disabled, use_container_width=True):
+        # Reset all previous results when starting a new analysis
+        for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
+            st.session_state.pop(key, None)
         with st.spinner("Extracting structured data from watsonx…"):
             try:
-                import json
                 raw_response = call_watsonx(
                     EXTRACTION_PROMPT.format(notes=notes_text),
                     model_id=selected_model,
@@ -775,13 +839,13 @@ def main():
             
             tab1, tab2, tab3, tab4 = st.tabs([
                 "📋 IBM Placemat",
-                "✅ PoC Checklist", 
+                "✅ PoC Checklist",
                 "🏗️ Architecture",
                 "📧 Kickoff Email"
             ])
-            
+
             artifacts = st.session_state["artifacts"]
-            
+
             with tab1:
                 st.markdown(artifacts.get("placemat", "No placemat generated"))
                 st.download_button(
@@ -790,7 +854,7 @@ def main():
                     file_name="ibm_placemat.md",
                     mime="text/markdown",
                 )
-            
+
             with tab2:
                 st.markdown(artifacts.get("checklist", "No checklist generated"))
                 st.download_button(
@@ -799,7 +863,7 @@ def main():
                     file_name="poc_checklist.md",
                     mime="text/markdown",
                 )
-            
+
             with tab3:
                 st.markdown(artifacts.get("architecture", "No architecture generated"))
                 st.download_button(
@@ -808,7 +872,7 @@ def main():
                     file_name="architecture_summary.md",
                     mime="text/markdown",
                 )
-            
+
             with tab4:
                 st.markdown(artifacts.get("email", "No email generated"))
                 st.download_button(
@@ -817,7 +881,74 @@ def main():
                     file_name="kickoff_email.txt",
                     mime="text/plain",
                 )
-            
+
+            # ZIP download — all four artifacts in one bundle
+            st.divider()
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("ibm_placemat.md",         artifacts.get("placemat", ""))
+                zf.writestr("poc_checklist.md",         artifacts.get("checklist", ""))
+                zf.writestr("architecture_summary.md",  artifacts.get("architecture", ""))
+                zf.writestr("kickoff_email.txt",         artifacts.get("email", ""))
+                zf.writestr("discovery_extraction.json", json.dumps(data, indent=2))
+            zip_buf.seek(0)
+            st.download_button(
+                "📦 Download all artifacts (.zip)",
+                data=zip_buf,
+                file_name="poc_artifacts.zip",
+                mime="application/zip",
+                use_container_width=True,
+                type="primary",
+            )
+
+            # TechZone environment request button (score ≥ 70 + known deployment env)
+            if "readiness_score" in st.session_state:
+                score = st.session_state["readiness_score"]["score"]
+                cloud_provider = data.get("deployment_env", {}).get("cloud_provider", "Unknown")
+                if score >= 70 and cloud_provider not in ("Unknown", "", None):
+                    st.divider()
+                    st.subheader("☁️ TechZone Environment")
+                    st.info(
+                        f"PoC readiness score is **{score}/100** and deployment environment is "
+                        f"**{cloud_provider}** — this engagement is ready for a TechZone provisioning request."
+                    )
+                    col_tz, _ = st.columns([1, 2])
+                    with col_tz:
+                        if st.button(
+                            "🚀 Request TechZone environment",
+                            type="primary",
+                            use_container_width=True,
+                            help="Opens the TechZone request form — no auto-submission",
+                        ):
+                            st.session_state["show_techzone_form"] = True
+
+                    if st.session_state.get("show_techzone_form"):
+                        with st.form("techzone_request_form"):
+                            st.markdown("**TechZone Request Details**")
+                            tz_purpose = st.selectbox(
+                                "Purpose",
+                                ["Demo", "Education", "Test", "Pilot"],
+                                index=2,
+                            )
+                            tz_notes = st.text_area(
+                                "Additional notes",
+                                placeholder="Any specific requirements or context for the TechZone team…",
+                                height=100,
+                            )
+                            submitted = st.form_submit_button("✅ Confirm request", type="primary")
+                            if submitted:
+                                st.success(
+                                    "✅ TechZone request details captured. "
+                                    "Hand these off to your TechZone admin to complete provisioning."
+                                )
+                                st.json({
+                                    "deployment_env": data.get("deployment_env", {}),
+                                    "purpose": tz_purpose,
+                                    "readiness_score": score,
+                                    "notes": tz_notes,
+                                })
+                                st.session_state["show_techzone_form"] = False
+
             st.divider()
         
         # Display extracted fields in expander cards
@@ -877,15 +1008,15 @@ def main():
             else:
                 st.info("No action items identified")
         
-        # Download JSON report
-        st.divider()
-        report_json = json.dumps(data, indent=2)
-        st.download_button(
-            "⬇️ Download extraction (.json)",
-            data=report_json,
-            file_name="discovery_extraction.json",
-            mime="application/json",
-        )
+        # Download JSON report (only shown before artifacts are generated)
+        if not st.session_state.get("confirmed"):
+            st.divider()
+            st.download_button(
+                "⬇️ Download extraction (.json)",
+                data=json.dumps(data, indent=2),
+                file_name="discovery_extraction.json",
+                mime="application/json",
+            )
 
 
 if __name__ == "__main__":
