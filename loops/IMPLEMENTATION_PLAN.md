@@ -7,9 +7,9 @@
 - [x] Update `requirements.txt` if any new dependencies are needed.
 
 ## Phase 2: Gap Check
-- [ ] Add a second LLM call that feeds the extracted JSON back and asks: "Which fields are missing, empty, or too vague to proceed?"
-- [ ] Display the gap-check result as a `st.warning` box with bullet-point questions.
-- [ ] Add a "Confirm and continue" button — artifact generation must be gated behind this confirmation.
+- [x] Add a second LLM call that feeds the extracted JSON back and asks: "Which fields are missing, empty, or too vague to proceed?"
+- [x] Display the gap-check result as a `st.warning` box with bullet-point questions.
+- [x] Add a "Confirm and continue" button — artifact generation must be gated behind this confirmation.
 
 ## Phase 3: Risk Detection + Readiness Score
 - [ ] Create `risk_triggers.py` — a keyword→flag dict covering: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD.

@@ -52,6 +52,27 @@ def call_watsonx(prompt: str, model_id: str = DEFAULT_MODEL, max_new_tokens: int
     return str(response).strip()
 
 
+def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
+    """Run gap analysis on extracted data to identify missing or unclear fields."""
+    import json
+    
+    extracted_json = json.dumps(extracted_data, indent=2)
+    prompt = GAP_CHECK_PROMPT.format(extracted_json=extracted_json)
+    
+    raw_response = call_watsonx(prompt, model_id=model_id, max_new_tokens=1000)
+    
+    try:
+        gap_data = json.loads(raw_response)
+        return gap_data
+    except json.JSONDecodeError:
+        # Fallback if parsing fails
+        return {
+            "gaps": [],
+            "readiness": "Needs clarification",
+            "summary": "Unable to parse gap analysis response"
+        }
+
+
 # ── file parsers ──────────────────────────────────────────────────────────────
 
 def parse_txt(file) -> str:
@@ -131,6 +152,42 @@ Rules:
 <|user|>
 Meeting notes:
 {notes}
+<|assistant|>
+"""
+
+GAP_CHECK_PROMPT = """\
+<|system|>
+You are a Discovery PoC readiness analyst for IBM watsonx. Your job is to review extracted \
+information from client meeting notes and identify what's missing or too vague to proceed \
+with a successful Proof of Concept.
+
+Review the extracted data below and identify gaps that would prevent a successful PoC. \
+Focus on:
+- Missing or empty critical fields (stakeholders, use cases, success criteria)
+- Vague or incomplete information (e.g., "Unknown" deployment environment, unclear success metrics)
+- Missing technical details needed for scoping (integrations, SSO/IdP, data sources)
+- Unaddressed risks or concerns
+
+Return your analysis as a JSON object with this structure:
+
+{{
+  "gaps": [
+    {{"field": "Field name", "issue": "What's missing or unclear", "question": "Specific question to ask the client"}}
+  ],
+  "readiness": "Ready | Needs clarification | Blocked",
+  "summary": "One-sentence assessment of PoC readiness"
+}}
+
+Rules:
+- Return ONLY the JSON object — no markdown, no preamble
+- List 3-7 gaps maximum — prioritize the most critical ones
+- Each question should be specific and actionable
+- Use "Ready" only if all critical fields are complete and clear
+- Use "Blocked" if multiple critical fields are missing
+
+<|user|>
+Extracted data:
+{extracted_json}
 <|assistant|>
 """
 
@@ -232,6 +289,9 @@ def main():
                 try:
                     extracted_data = json.loads(raw_response)
                     st.session_state["extracted_data"] = extracted_data
+                    # Clear previous gap check and confirmation
+                    st.session_state.pop("gap_check", None)
+                    st.session_state.pop("confirmed", None)
                 except json.JSONDecodeError as je:
                     st.error(
                         f"Failed to parse watsonx response as JSON.\n\n"
@@ -243,11 +303,65 @@ def main():
             except Exception as e:
                 st.error(f"watsonx error: {e}")
                 st.stop()
+        
+        # Run gap check immediately after extraction
+        with st.spinner("Checking for gaps and missing information…"):
+            try:
+                gap_data = check_gaps(st.session_state["extracted_data"], model_id=selected_model)
+                st.session_state["gap_check"] = gap_data
+            except Exception as e:
+                st.warning(f"Gap check failed: {e}")
+                # Continue anyway with empty gap check
+                st.session_state["gap_check"] = {
+                    "gaps": [],
+                    "readiness": "Needs clarification",
+                    "summary": "Gap check unavailable"
+                }
 
     # ── results ───────────────────────────────────────────────────────────────
     if "extracted_data" in st.session_state:
         st.divider()
         data = st.session_state["extracted_data"]
+        
+        # Display gap check results
+        if "gap_check" in st.session_state:
+            gap_data = st.session_state["gap_check"]
+            readiness = gap_data.get("readiness", "Needs clarification")
+            summary = gap_data.get("summary", "")
+            gaps = gap_data.get("gaps", [])
+            
+            # Show readiness banner
+            if readiness == "Ready":
+                st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
+            elif readiness == "Blocked":
+                st.error(f"🚫 **PoC Readiness:** {readiness} — {summary}")
+            else:
+                st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
+            
+            # Show gaps if any
+            if gaps:
+                with st.expander("🔍 Missing or unclear information", expanded=True):
+                    st.markdown("**The following items need clarification before proceeding:**")
+                    for gap in gaps:
+                        field = gap.get("field", "Unknown field")
+                        issue = gap.get("issue", "")
+                        question = gap.get("question", "")
+                        st.markdown(f"- **{field}:** {issue}")
+                        if question:
+                            st.markdown(f"  - ❓ _{question}_")
+                    st.divider()
+                    st.markdown("_Review the extracted data below and update your notes if needed, then re-analyze._")
+            
+            # Confirmation button (only show if not already confirmed)
+            if "confirmed" not in st.session_state:
+                st.divider()
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
+                        st.session_state["confirmed"] = True
+                        st.rerun()
+                st.info("👆 Review the extraction above, then confirm to proceed with artifact generation.")
+                st.divider()
         
         # Display extracted fields in expander cards
         with st.expander("👥 Stakeholders", expanded=True):
