@@ -84,65 +84,50 @@ def extract_text(uploaded_file) -> str:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 
-SUMMARY_PROMPT = """\
+EXTRACTION_PROMPT = """\
 <|system|>
-You are a world-class meeting analyst and executive communicator. Your job is to transform raw \
-meeting notes into a sharp, insightful summary that a senior executive can act on in 60 seconds.
+You are an expert Discovery PoC analyst for IBM watsonx. Your job is to extract structured \
+information from client meeting notes to prepare for a Proof of Concept engagement.
 
-Follow this exact structure — do not add extra sections:
+Extract the following fields from the meeting notes and return them as a JSON object. \
+If a field cannot be determined from the notes, use an empty array [] or empty string "" as appropriate.
 
-## 🗂 Overview
-Write 2–3 crisp sentences capturing the meeting's purpose, who was involved, and the single most \
-important outcome or unresolved tension. Be direct — no filler phrases like "the team discussed".
+Return ONLY valid JSON in this exact structure:
 
-## 💬 Key Discussion Points
-List the most substantive topics raised. For each point:
-- Lead with the **topic** in bold
-- Follow with one sentence of context or the core argument made
-- Include any notable disagreements, risks, or trade-offs surfaced
-- Aim for 3–6 bullets; skip small talk and logistics
-
-## ✅ Decisions Made
-List every explicit decision or commitment reached. If a decision has a clear owner or deadline, \
-include it inline. If no decisions were made, write: *No decisions recorded.*
-
-## ⚠️ Risks & Open Questions
-Call out anything unresolved, blocked, or flagged as a concern — even if briefly mentioned. \
-If nothing was flagged, write: *None identified.*
+{{
+  "stakeholders": [
+    {{"name": "Full Name", "role": "Job Title", "organization": "Company/Dept"}}
+  ],
+  "use_cases": [
+    {{"title": "Brief title", "description": "What they want to achieve"}}
+  ],
+  "integrations": [
+    {{"system": "System name (e.g., SAP, Salesforce)", "purpose": "Why it needs to integrate"}}
+  ],
+  "deployment_env": {{
+    "cloud_provider": "AWS | Azure | IBM Cloud | GCP | On-premises | Hybrid | Unknown",
+    "region": "Geographic region or 'Unknown'",
+    "constraints": "Any compliance, data residency, or infrastructure constraints"
+  }},
+  "success_criteria": [
+    "Measurable outcome 1",
+    "Measurable outcome 2"
+  ],
+  "risks": [
+    {{"risk": "Description of risk or concern", "severity": "High | Medium | Low"}}
+  ],
+  "action_items": [
+    {{"owner": "Person name or 'Unassigned'", "task": "What needs to be done", "due": "Date or 'TBD'"}}
+  ]
+}}
 
 Rules:
-- Use plain, confident language. No corporate jargon or padding.
-- If information for a section is genuinely absent from the notes, say so briefly — do not invent.
-- Output only the structured summary. No preamble, no sign-off.
-<|user|>
-Meeting notes:
-{notes}
-<|assistant|>
-"""
-
-ACTION_ITEMS_PROMPT = """\
-<|system|>
-You are a world-class meeting analyst specialising in accountability and follow-through. \
-Your job is to extract every commitment, task, and follow-up from the meeting notes and \
-present them in a format a project manager can immediately drop into a tracker.
-
-For each action item output a line in this exact format:
-- [ ] **[Owner]** — Task description *(Due: date or "TBD")*
-
-Guidelines:
-- **Owner**: use the person's name if mentioned; otherwise write *Unassigned*
-- **Task**: be specific — include enough context so the owner knows exactly what to do \
-without re-reading the notes
-- **Due date**: use the exact date or phrase from the notes; if none given, write *TBD*
-- If an action item implies a demo, proof-of-concept, or product showcase, append the \
-tag `#demo` at the end of that line
-- Group items by owner if there are 4 or more items; otherwise list chronologically
-- If no action items are present, respond with exactly: *No action items identified.*
-
-Rules:
-- Do not invent tasks — only extract what was explicitly stated or clearly implied
-- Do not include vague statements like "we should look into this" unless a person was assigned
-- Output only the action item list. No preamble, no sign-off.
+- Return ONLY the JSON object — no markdown code fences, no preamble, no explanation
+- Use empty arrays [] for list fields with no data
+- Use empty strings "" for text fields with no data
+- For deployment_env, always include all three sub-fields even if "Unknown" or ""
+- Extract risks even if only briefly mentioned
+- Be precise — do not invent information not present in the notes
 <|user|>
 Meeting notes:
 {notes}
@@ -234,32 +219,101 @@ def main():
     st.divider()
     analyse_disabled = not notes_text.strip()
     if st.button("🔍 Analyse", type="primary", disabled=analyse_disabled, use_container_width=True):
-        with st.spinner("Contacting watsonx…"):
+        with st.spinner("Extracting structured data from watsonx…"):
             try:
-                summary = call_watsonx(SUMMARY_PROMPT.format(notes=notes_text), model_id=selected_model)
-                actions = call_watsonx(ACTION_ITEMS_PROMPT.format(notes=notes_text), model_id=selected_model)
-                st.session_state["summary"] = summary
-                st.session_state["actions"] = actions
+                import json
+                raw_response = call_watsonx(
+                    EXTRACTION_PROMPT.format(notes=notes_text),
+                    model_id=selected_model,
+                    max_new_tokens=2000
+                )
+                
+                # Parse JSON response
+                try:
+                    extracted_data = json.loads(raw_response)
+                    st.session_state["extracted_data"] = extracted_data
+                except json.JSONDecodeError as je:
+                    st.error(
+                        f"Failed to parse watsonx response as JSON.\n\n"
+                        f"**Error:** {je}\n\n"
+                        f"**Raw response (first 500 chars):**\n```\n{raw_response[:500]}\n```"
+                    )
+                    st.stop()
+                    
             except Exception as e:
                 st.error(f"watsonx error: {e}")
                 st.stop()
 
     # ── results ───────────────────────────────────────────────────────────────
-    if "summary" in st.session_state and "actions" in st.session_state:
+    if "extracted_data" in st.session_state:
         st.divider()
-        render_results(st.session_state["summary"], st.session_state["actions"])
-
-        # download combined report
-        report = (
-            "# Meeting Analysis Report\n\n"
-            "## Summary\n\n" + st.session_state["summary"] + "\n\n"
-            "## Action Items\n\n" + st.session_state["actions"]
-        )
+        data = st.session_state["extracted_data"]
+        
+        # Display extracted fields in expander cards
+        with st.expander("👥 Stakeholders", expanded=True):
+            if data.get("stakeholders"):
+                for s in data["stakeholders"]:
+                    st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
+            else:
+                st.info("No stakeholders identified")
+        
+        with st.expander("🎯 Use Cases", expanded=True):
+            if data.get("use_cases"):
+                for uc in data["use_cases"]:
+                    st.markdown(f"**{uc.get('title', 'Untitled')}**")
+                    st.markdown(f"_{uc.get('description', 'No description')}_")
+                    st.markdown("---")
+            else:
+                st.info("No use cases identified")
+        
+        with st.expander("🔗 Integrations", expanded=False):
+            if data.get("integrations"):
+                for integ in data["integrations"]:
+                    st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
+            else:
+                st.info("No integrations identified")
+        
+        with st.expander("☁️ Deployment Environment", expanded=False):
+            env = data.get("deployment_env", {})
+            st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
+            st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
+            if env.get("constraints"):
+                st.markdown(f"**Constraints:** {env.get('constraints')}")
+        
+        with st.expander("✅ Success Criteria", expanded=False):
+            if data.get("success_criteria"):
+                for sc in data["success_criteria"]:
+                    st.markdown(f"- {sc}")
+            else:
+                st.warning("No success criteria defined")
+        
+        with st.expander("⚠️ Risks", expanded=False):
+            if data.get("risks"):
+                for risk in data["risks"]:
+                    severity = risk.get("severity", "Unknown")
+                    emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                    st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
+            else:
+                st.info("No risks identified")
+        
+        with st.expander("📋 Action Items", expanded=False):
+            if data.get("action_items"):
+                for ai in data["action_items"]:
+                    owner = ai.get("owner", "Unassigned")
+                    task = ai.get("task", "No task description")
+                    due = ai.get("due", "TBD")
+                    st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
+            else:
+                st.info("No action items identified")
+        
+        # Download JSON report
+        st.divider()
+        report_json = json.dumps(data, indent=2)
         st.download_button(
-            "⬇️ Download report (.md)",
-            data=report,
-            file_name="meeting_report.md",
-            mime="text/markdown",
+            "⬇️ Download extraction (.json)",
+            data=report_json,
+            file_name="discovery_extraction.json",
+            mime="application/json",
         )
 
 
