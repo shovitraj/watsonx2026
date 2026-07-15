@@ -12,7 +12,7 @@
 - [x] Add a "Confirm and continue" button — artifact generation must be gated behind this confirmation.
 
 ## Phase 3: Risk Detection + Readiness Score
-- [ ] Create `risk_triggers.py` — a keyword→flag dict covering: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD.
+- [x] Create `risk_triggers.py` — a keyword→flag dict covering: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD.
 - [ ] Implement a readiness score (0–100): start at 100, deduct points for each missing/vague field and each risk flag without a mitigation.
 - [ ] Display the score as a `st.progress` bar with a breakdown table showing which items cost points.
 

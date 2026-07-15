@@ -57,3 +57,31 @@ _Each iteration appends one entry here._
 - `loops/PROGRESS.md` — this file
 
 **Next task:** Phase 3 — Risk Detection + Readiness Score (create risk_triggers.py, implement scoring)
+
+---
+
+## Iteration 3 — 2026-07-15
+
+**Task completed:** Phase 3.1 — Create risk_triggers.py
+
+**Changes made:**
+- Created `risk_triggers.py` with comprehensive keyword→risk category mapping
+- Covered all required categories: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD
+- Added additional relevant triggers: PCI, SOX, FedRAMP, ISO 27001, NIST, FISMA compliance
+- Added enterprise systems: Salesforce, Oracle, Workday, PeopleSoft
+- Added AI-specific triggers: RAG, vector database, embedding, model training, real-time processing
+- Implemented `detect_risks()` function to scan text and return matched risk categories with keywords
+- Implemented `get_risk_severity()` function to assign default severity levels (High/Medium/Low)
+
+**Key decisions:**
+- Used lowercase keywords for case-insensitive matching
+- Grouped related keywords under single risk categories (e.g., "hipaa", "phi", "patient data" → "HIPAA Compliance")
+- Severity levels: High for compliance/security (HIPAA, GDPR, PCI), Medium for integrations/deployment, Low for others
+- Helper functions return structured data ready for UI display
+
+**Files changed:**
+- `risk_triggers.py` — new file with RISK_TRIGGERS dict and helper functions
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 3.1 task complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 3.2 — Implement readiness score (0-100) with point deductions and progress bar display
