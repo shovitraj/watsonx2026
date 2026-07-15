@@ -1,0 +1,325 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Build Plan — Meeting Notes Analyzer → Discovery Orchestrator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6; color: #1f2328;
+    background: #ffffff; padding: 32px 24px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { color: #57606a; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+       color: #57606a; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+
+  /* Status banner */
+  .banner { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .banner-card { flex: 1; min-width: 160px; border-radius: 6px; padding: 12px 14px; }
+  .banner-card.green { background: #d1fae5; border: 1px solid #6ee7b7; }
+  .banner-card.blue  { background: #dbeafe; border: 1px solid #93c5fd; }
+  .banner-card.amber { background: #fef3c7; border: 1px solid #fcd34d; }
+  .banner-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+  .banner-body  { font-size: 12px; }
+
+  /* Bridge section */
+  .bridge { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; padding: 16px 18px; margin-bottom: 8px; font-size: 13px; }
+  .bridge h3 { font-size: 14px; font-weight: 700; color: #1d4ed8; margin-bottom: 8px; }
+
+  /* Flow */
+  .flow { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .flow-step { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border: 1px solid #e5e7eb; border-radius: 6px; }
+  .flow-step.have  { background: #f0fdf4; border-left: 3px solid #22c55e; }
+  .flow-step.add   { background: #fff7ed; border-left: 3px solid #f59e0b; }
+  .flow-step.bonus { background: #eff6ff; border-left: 3px solid #3b82d4; }
+  .flow-arrow { text-align: center; color: #57606a; font-size: 16px; padding: 1px 0 1px 26px; }
+  .step-num { font-weight: 700; min-width: 20px; font-size: 12px; color: #57606a; }
+  .step-label { font-weight: 600; font-size: 13px; }
+  .step-note { font-size: 12px; color: #57606a; margin-top: 1px; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .t-have  { background: #d1fae5; color: #065f46; }
+  .t-add   { background: #fef3c7; color: #92400e; }
+  .t-bonus { background: #dbeafe; color: #1e40af; }
+
+  /* Day table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f7f8fa; border: 1px solid #e5e7eb; font-weight: 600; color: #57606a; }
+  td { padding: 8px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+  code { font-family: "SF Mono","Fira Code",monospace; font-size: 11px; background: #f0f0f0; padding: 1px 5px; border-radius: 3px; }
+  .num { font-weight: 700; color: #3b82d4; }
+
+  /* Callout */
+  .callout { border-left: 3px solid #3b82d4; background: #eff6ff; padding: 12px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 8px; }
+  .callout.green { border-color: #22c55e; background: #f0fdf4; }
+  .callout.amber { border-color: #f59e0b; background: #fffbeb; }
+  .callout.red   { border-color: #ef4444; background: #fef2f2; }
+
+  /* Demo script */
+  .demo-step { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+  .demo-step:last-child { border-bottom: none; }
+  .demo-n { font-weight: 700; color: #3b82d4; min-width: 22px; }
+  .demo-say { font-style: italic; color: #57606a; font-size: 12px; }
+
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #57606a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Meeting Notes Analyzer → Discovery PoC Orchestrator</h1>
+  <div class="sub">Bridging what's already built to what the plans describe — realistic 2–3 day path</div>
+
+  
+  <h2>What you have right now</h2>
+  <div class="banner">
+    <div class="banner-card green">
+      <div class="banner-title">✅ Working app.py</div>
+      <div class="banner-body">Streamlit + watsonx.ai. Paste or upload notes → summary + action items. Download MD report.</div>
+    </div>
+    <div class="banner-card green">
+      <div class="banner-title">✅ Granite / Llama models</div>
+      <div class="banner-body">12 models wired. <code>llama-3-3-70b-instruct</code> as default. IBM SDK ready.</div>
+    </div>
+    <div class="banner-card green">
+      <div class="banner-title">✅ TechZone MCP</div>
+      <div class="banner-body">Already in <code>.bob/mcp.json</code>. Provision environments — no build needed.</div>
+    </div>
+    <div class="banner-card blue">
+      <div class="banner-title">📋 Plans done</div>
+      <div class="banner-body">Gap analysis + tech stack designed. 4-agent architecture mapped. Build order written.</div>
+    </div>
+  </div>
+
+  
+  <h2>How the existing app connects to the plans</h2>
+  <div class="bridge">
+    <h3>The existing app IS Step 1 of the plan — already done</h3>
+    Your <code>app.py</code> already handles: file upload (txt/docx/pdf), watsonx.ai integration, and basic extraction (summary + action items). The plans describe a 7-step Discovery Orchestrator. <strong>You're already at step 2.</strong> The gap is: your extraction is <em>unstructured text</em> — the plan needs <em>structured JSON fields</em> (stakeholders, use cases, integrations, risks, success criteria). That one prompt change unlocks everything downstream.
+  </div>
+
+  
+  <h2>The full flow — what you have vs. what to add</h2>
+  <div class="flow">
+    <div class="flow-step have">
+      <span class="step-num">1</span>
+      <div>
+        <div class="step-label">Upload / paste meeting notes <span class="tag t-have">HAVE</span></div>
+        <div class="step-note">txt · docx · pdf · paste — already working in app.py</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step add">
+      <span class="step-num">2</span>
+      <div>
+        <div class="step-label">Structured extraction <span class="tag t-add">ADD — 2 hrs</span></div>
+        <div class="step-note">Replace current summary prompt with a JSON-returning prompt: stakeholders · use cases · integrations · deployment env · success criteria · risks</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step add">
+      <span class="step-num">3</span>
+      <div>
+        <div class="step-label">Gap check + completeness <span class="tag t-add">ADD — 1 hr</span></div>
+        <div class="step-note">Second LLM call on the JSON: "What fields are empty or vague? List them as questions for the SE to answer before proceeding."</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step add">
+      <span class="step-num">4</span>
+      <div>
+        <div class="step-label">Risk detection + readiness score <span class="tag t-add">ADD — 2 hrs</span></div>
+        <div class="step-note">Python rules engine: HIPAA → security checklist flag. SAP → SME flag. Missing SSO → deduct points. Score 0–100 with breakdown.</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step add">
+      <span class="step-num">5</span>
+      <div>
+        <div class="step-label">Artifact generation <span class="tag t-add">ADD — half day</span></div>
+        <div class="step-note">From structured JSON → generate: IBM Placemat MD · PoC checklist · Architecture draft summary · Kickoff email draft. All rendered in Streamlit tabs.</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step have">
+      <span class="step-num">6</span>
+      <div>
+        <div class="step-label">Download artifacts <span class="tag t-have">HAVE</span></div>
+        <div class="step-note">Already have download button — expand to multi-file ZIP</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step bonus">
+      <span class="step-num">7</span>
+      <div>
+        <div class="step-label">TechZone auto-provision <span class="tag t-bonus">BONUS — Day 3</span></div>
+        <div class="step-note">If readiness score ≥ 70% and deployment env detected → show TechZone request button using existing MCP. Don't auto-send — human confirms.</div>
+      </div>
+    </div>
+  </div>
+
+  
+  <h2>Realistic schedule — same Streamlit stack, no new framework</h2>
+  <table>
+    <thead>
+      <tr><th>When</th><th>What to build</th><th>Concrete task</th><th>Demo-able?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="num">Day 1<br />AM</span></td>
+        <td><strong>Structured extraction</strong></td>
+        <td>
+          Replace <code>SUMMARY_PROMPT</code> with a JSON-returning prompt.<br />
+          Fields: <code>stakeholders</code>, <code>use_cases</code>, <code>integrations</code>, <code>deployment_env</code>, <code>success_criteria</code>, <code>risks</code>, <code>action_items</code>.<br />
+          Parse the JSON in Python, display each field in a <code>st.expander</code>.
+        </td>
+        <td>Yes — show structured cards vs. raw text</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 1<br />PM</span></td>
+        <td><strong>Gap check</strong></td>
+        <td>
+          Second LLM call: feed the extracted JSON back → "Which fields are missing or vague?"<br />
+          Display as a yellow warning box with bullet questions.<br />
+          Add a "Confirm and continue" button — don't generate artifacts until confirmed.
+        </td>
+        <td>Yes — the "AI catches what you forgot" moment</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 2<br />AM</span></td>
+        <td><strong>Risk detection + readiness score</strong></td>
+        <td>
+          Python dict: <code>risk_triggers.py</code> — keyword → flag (HIPAA, SAP, Voice, GDPR, on-prem).<br />
+          Readiness score: 100 pts, deduct for each missing field.<br />
+          Display as progress bar + breakdown table.
+        </td>
+        <td>Yes — very visual, strong "IBM" feel</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 2<br />PM</span></td>
+        <td><strong>Artifact generation tabs</strong></td>
+        <td>
+          4 LLM calls (or 1 big call) → 4 artifacts in <code>st.tabs</code>:<br />
+          Tab 1: IBM Placemat (structured markdown)<br />
+          Tab 2: PoC Checklist (checkbox list)<br />
+          Tab 3: Architecture summary (component list)<br />
+          Tab 4: Kickoff email draft (ready to copy)
+        </td>
+        <td>Yes — the full "wow" demo moment</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 3</span></td>
+        <td><strong>Polish + TechZone button</strong></td>
+        <td>
+          Wire TechZone MCP: if deployment env detected, show "Request TechZone environment" button.<br />
+          Expand download to ZIP with all 4 artifacts.<br />
+          Add a sample transcript for the demo.<br />
+          (Optional) Deploy to Streamlit Cloud for a live URL.
+        </td>
+        <td>Yes — closes the loop end-to-end</td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Why stay on Streamlit (not wxO agents)</h2>
+  <div class="callout green">
+    <strong>The existing app.py is already the right foundation.</strong> Porting to watsonx Orchestrate ADK adds a week of setup for the same demo outcome. Keep Streamlit for the PoC — it's fast, it's already wired to watsonx, and the UI is clean. Add wxO agents in Phase 2 as the "production path."
+  </div>
+  <div class="callout amber" style="margin-top:8px">
+    <strong>The TechZone MCP is in <code>.bob/mcp.json</code> — not Streamlit.</strong> To wire it from Streamlit, call the MCP directly via Python subprocess, or use Bob to expose a thin Python wrapper. Alternatively: demo the TechZone step separately via Bob chat, then splice it into the screen recording. Perfectly acceptable for a PoC.
+  </div>
+
+  
+  <h2>2-minute demo script</h2>
+  <div>
+    <div class="demo-step">
+      <span class="demo-n">1</span>
+      <div>
+        <div>Open the app. Paste or upload a sample discovery meeting transcript.</div>
+        <div class="demo-say">"Here's a raw transcript from a client discovery call — 15 minutes of notes, no structure."</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <span class="demo-n">2</span>
+      <div>
+        <div>Click Analyse. Show the structured extraction cards.</div>
+        <div class="demo-say">"Within seconds it extracts 7 structured fields — stakeholders, use cases, integrations, risks, success criteria."</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <span class="demo-n">3</span>
+      <div>
+        <div>Point to the gap check warning box.</div>
+        <div class="demo-say">"The agent flags what's missing: no success criteria, no IdP mentioned, deployment environment unclear. It asks before generating anything."</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <span class="demo-n">4</span>
+      <div>
+        <div>Show the readiness score: e.g. 72% with breakdown.</div>
+        <div class="demo-say">"PoC readiness: 72%. Here's exactly what's blocking the remaining 28% — a HIPAA flag triggered the security checklist."</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <span class="demo-n">5</span>
+      <div>
+        <div>Click through the 4 artifact tabs.</div>
+        <div class="demo-say">"Confirm and it generates: the IBM placemat, the PoC checklist, an architecture draft, and a kickoff email — all ready to use."</div>
+      </div>
+    </div>
+    <div class="demo-step">
+      <span class="demo-n">6</span>
+      <div>
+        <div>Click TechZone button (or show Bob chat doing it).</div>
+        <div class="demo-say">"Since the readiness score passed threshold, the system offers to provision the demo environment in TechZone — one click, human approved."</div>
+      </div>
+    </div>
+  </div>
+
+  
+  <h2>What to cut — protect the timeline</h2>
+  <div class="callout red">
+    <strong>Do not build:</strong> Custom frontend, Salesforce sync, Monday.com, RFP automation, vector search / RAG, custom auth. Each of these is a full day of debugging on its own. Mention them as "Phase 2" in the last slide of your demo deck.
+  </div>
+
+  
+  <h2>Suggested sample transcript for the demo</h2>
+  <div style="background:#f7f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:14px 16px;font-size:12px;font-family:'SF Mono','Fira Code',monospace;line-height:1.7;white-space:pre-wrap">Attendees: Sarah (SE), Mark (Client IT), Lisa (Client VP), James (IBM PM)
+Date: June 2025
+
+Sarah: Thanks everyone. So the goal today is to understand your deployment priorities for watsonx.
+
+Mark: We're looking at HR automation first — specifically the onboarding workflow. We have about 2,000 employees. Our systems are SAP SuccessFactors and Workday.
+
+Lisa: The business case is reducing onboarding time from 3 weeks to 5 days. We need to show ROI by Q4.
+
+Mark: We're on Azure. All our data has to stay in the EU — we're subject to GDPR.
+
+Sarah: Any SSO or identity requirements?
+
+Mark: We use Azure AD. Everything goes through that.
+
+Sarah: Great. What does success look like for the PoC?
+
+Lisa: If it can automate the first interview scheduling and document collection, that's a win.
+
+James: I'll send over the TechZone environment options after this call. We should target a 2-week PoC.
+
+Mark: One concern — our IT security team will need to review any AI model before we go live.
+
+Action: James to send TechZone options by EOD Friday.
+Action: Sarah to draft PoC scope document by next Tuesday.
+Action: Mark to get IT security requirements doc to IBM team within 1 week.</div>
+
+  <div class="callout green" style="margin-top:10px">
+    This transcript will produce: 6 stakeholders extracted, SAP flag (SME needed), GDPR flag (EU region + data review), Azure AD SSO detected (success), readiness score ~78%, 3 action items, TechZone request triggered. Perfect demo narrative.
+  </div>
+
+  <div class="footer">Made with IBM Bob</div>
+</div>
+</body>
+</html>

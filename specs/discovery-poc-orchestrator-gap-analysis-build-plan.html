@@ -1,0 +1,232 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Discovery → PoC Orchestrator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2328;
+    background: #ffffff;
+    padding: 32px 24px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #57606a; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #57606a; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+
+  /* Flow */
+  .flow { display: flex; flex-direction: column; gap: 0; margin-bottom: 8px; }
+  .flow-step { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 2px; }
+  .flow-arrow { text-align: center; color: #57606a; font-size: 16px; margin: 0 0 2px 26px; }
+  .step-num { font-weight: 700; color: #3b82d4; min-width: 22px; font-size: 13px; }
+  .step-label { font-weight: 600; font-size: 13px; }
+  .step-note { font-size: 12px; color: #57606a; margin-top: 1px; }
+
+  /* Gap table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f7f8fa; border: 1px solid #e5e7eb; font-weight: 600; color: #57606a; }
+  td { padding: 8px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .tag-have { background: #d1fae5; color: #065f46; }
+  .tag-missing { background: #fee2e2; color: #991b1b; }
+  .tag-partial { background: #fef3c7; color: #92400e; }
+  .stars { color: #3b82d4; letter-spacing: -1px; }
+
+  /* Difficulty matrix */
+  .matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; background: #f7f8fa; }
+  .card-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  .card-diff { font-size: 12px; margin-bottom: 2px; }
+  .d1 { border-left: 3px solid #22c55e; }
+  .d2 { border-left: 3px solid #84cc16; }
+  .d3 { border-left: 3px solid #f59e0b; }
+  .d4 { border-left: 3px solid #ef4444; }
+
+  /* MVP box */
+  .mvp-box { border: 2px solid #3b82d4; border-radius: 8px; padding: 18px 20px; background: #eff6ff; margin-top: 8px; }
+  .mvp-box h3 { font-size: 15px; font-weight: 700; color: #1d4ed8; margin-bottom: 10px; }
+  .mvp-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; font-size: 13px; }
+  .mvp-icon { min-width: 18px; color: #3b82d4; font-weight: 700; }
+  .check { color: #16a34a; font-weight: 700; }
+  .cross { color: #dc2626; font-weight: 700; }
+
+  /* Recommendation */
+  .rec { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 14px 16px; margin-top: 8px; font-size: 13px; }
+  .rec strong { color: #15803d; }
+
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #57606a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Discovery → PoC Orchestrator</h1>
+  <div class="subtitle">Gap analysis based on your whiteboard + ChatGPT recommendations</div>
+
+  
+  <h2>What your whiteboard already has</h2>
+  <div class="flow">
+    <div class="flow-step"><span class="step-num">1</span><div><div class="step-label">Discovery Meeting</div><div class="step-note">Starting input — transcript or notes</div></div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step"><span class="step-num">2</span><div><div class="step-label">Action Items extraction</div><div class="step-note">Stakeholders, tasks, follow-ups</div></div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step"><span class="step-num">3</span><div><div class="step-label">Demo → TechZone (T2)</div><div class="step-note">Provision demo environment</div></div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step"><span class="step-num">4</span><div><div class="step-label">Doc Mining → Seismic → Email</div><div class="step-note">Client-ready presentations pulled from Seismic</div></div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step"><span class="step-num">5</span><div><div class="step-label">RFI/RFP → Database comparison + Architecture + Sizing</div><div class="step-note">Document comparison and solution design</div></div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-step"><span class="step-num">6</span><div><div class="step-label">→ PoC / Workshop</div><div class="step-note">Final output target</div></div></div>
+  </div>
+
+  
+  <h2>Gap analysis — what's missing</h2>
+  <table>
+    <thead>
+      <tr><th>Feature</th><th>Status</th><th>Priority</th><th>Why it matters</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Structured requirement extraction</strong><br /><span style="font-size:11px;color:#57606a">Objectives, use cases, integrations, risks, success criteria</span></td>
+        <td><span class="tag tag-partial">Partial</span></td>
+        <td><span class="stars">★★★★★</span></td>
+        <td>Your whiteboard shows action items but not structured fields. This is the foundation everything else depends on.</td>
+      </tr>
+      <tr>
+        <td><strong>Gap / completeness check</strong><br /><span style="font-size:11px;color:#57606a">"No IdP mentioned." "No success criteria."</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★★★</span></td>
+        <td>The single strongest AI use case. Catches what humans miss before generating wrong artifacts.</td>
+      </tr>
+      <tr>
+        <td><strong>Readiness score</strong><br /><span style="font-size:11px;color:#57606a">PoC Readiness: 82% — missing SSO, security Q, data source</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★★</span></td>
+        <td>Visually impressive, easy to implement with a rules engine + LLM. Very "IBM" feel.</td>
+      </tr>
+      <tr>
+        <td><strong>Placemat generation</strong><br /><span style="font-size:11px;color:#57606a">Structured IBM placemat from extracted requirements</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★★</span></td>
+        <td>High IBM relevance. Easy with prompt templates. Strong demo artifact.</td>
+      </tr>
+      <tr>
+        <td><strong>Architecture draft</strong><br /><span style="font-size:11px;color:#57606a">Auto-generated from use cases + integrations</span></td>
+        <td><span class="tag tag-have">Have (RFP path)</span></td>
+        <td><span class="stars">★★★★★</span></td>
+        <td>Already on whiteboard for RFP path — needs to also trigger from Discovery path.</td>
+      </tr>
+      <tr>
+        <td><strong>Risk detection</strong><br /><span style="font-size:11px;color:#57606a">HIPAA → Security review. SAP mention → SAP SME. Voice → Voice checklist.</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★★</span></td>
+        <td>Pattern matching on extracted content triggers specific checklists or reviewers automatically.</td>
+      </tr>
+      <tr>
+        <td><strong>Stakeholder routing</strong><br /><span style="font-size:11px;color:#57606a">Auto-notify CE, FDE, Security, PM based on what was extracted</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★</span></td>
+        <td>Makes orchestration concrete. Who gets notified and why is traceable back to discovery content.</td>
+      </tr>
+      <tr>
+        <td><strong>TechZone provisioning</strong><br /><span style="font-size:11px;color:#57606a">Auto-file request based on detected environment needs</span></td>
+        <td><span class="tag tag-have">Have (Demo path)</span></td>
+        <td><span class="stars">★★★</span></td>
+        <td>On your whiteboard — but it's triggered manually. Should trigger from extracted requirements.</td>
+      </tr>
+      <tr>
+        <td><strong>Deliverable approval workflow</strong><br /><span style="font-size:11px;color:#57606a">Generate → Review → Approve → Send (not immediate send)</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★★</span></td>
+        <td>Keeps human in the loop. Prevents AI from sending bad artifacts automatically.</td>
+      </tr>
+      <tr>
+        <td><strong>Opportunity health monitoring</strong><br /><span style="font-size:11px;color:#57606a">No activity 10 days → reminder. PoC expiring → renew alert.</span></td>
+        <td><span class="tag tag-missing">Missing</span></td>
+        <td><span class="stars">★★</span></td>
+        <td>Good post-MVP feature. Adds longitudinal value but harder to demo in a short window.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Difficulty vs. value — what to build first</h2>
+  <div class="matrix">
+    <div class="card d1">
+      <div class="card-title">⭐ Easiest + High Value</div>
+      <div class="card-diff">Difficulty: ★☆☆☆☆</div>
+      <ul style="font-size:12px;padding-left:16px;margin-top:4px;color:#1f2328">
+        <li>Placemat generation</li>
+        <li>Demo/PoC checklist generation</li>
+        <li>Gap / completeness check</li>
+        <li>Readiness score (rules engine)</li>
+      </ul>
+    </div>
+    <div class="card d2">
+      <div class="card-title">⭐⭐ Medium — Worth doing</div>
+      <div class="card-diff">Difficulty: ★★☆☆☆</div>
+      <ul style="font-size:12px;padding-left:16px;margin-top:4px;color:#1f2328">
+        <li>Architecture draft from patterns</li>
+        <li>Risk detection (keyword → checklist)</li>
+        <li>Kickoff email drafting</li>
+        <li>Deliverable approval step</li>
+      </ul>
+    </div>
+    <div class="card d3">
+      <div class="card-title">⭐⭐⭐ Harder — API dependent</div>
+      <div class="card-diff">Difficulty: ★★★☆☆</div>
+      <ul style="font-size:12px;padding-left:16px;margin-top:4px;color:#1f2328">
+        <li>Monday.com task creation</li>
+        <li>Stakeholder routing + notifications</li>
+        <li>Email sending via connector</li>
+        <li>Seismic doc retrieval</li>
+      </ul>
+    </div>
+    <div class="card d4">
+      <div class="card-title">⭐⭐⭐⭐ Hardest — Avoid for MVP</div>
+      <div class="card-diff">Difficulty: ★★★★☆</div>
+      <ul style="font-size:12px;padding-left:16px;margin-top:4px;color:#1f2328">
+        <li>TechZone auto-provisioning</li>
+        <li>Full multi-agent orchestration</li>
+        <li>Salesforce sync</li>
+        <li>Opportunity health monitoring</li>
+      </ul>
+    </div>
+  </div>
+
+  
+  <h2>Recommended MVP — one complete vertical slice</h2>
+  <div class="mvp-box">
+    <h3>AI Discovery → PoC Kickoff Orchestrator</h3>
+    <div class="mvp-row"><span class="mvp-icon">1.</span><div><strong>Input:</strong> Upload meeting transcript or paste notes</div></div>
+    <div class="mvp-row"><span class="mvp-icon">2.</span><div><strong>Extract:</strong> Stakeholders · Use cases · Integrations needed · Risks · Deployment env · Success criteria</div></div>
+    <div class="mvp-row"><span class="mvp-icon">3.</span><div><strong>Gap check:</strong> "Missing: IdP info, success criteria, deployment environment" — ask before generating</div></div>
+    <div class="mvp-row"><span class="mvp-icon">4.</span><div><strong>Risk flags:</strong> HIPAA detected → add security checklist. Voice detected → add Voice Gateway checklist.</div></div>
+    <div class="mvp-row"><span class="mvp-icon">5.</span><div><strong>Generate:</strong> Placemat · Architecture draft · PoC checklist · Kickoff email draft · Action items</div></div>
+    <div class="mvp-row"><span class="mvp-icon">6.</span><div><strong>Readiness score:</strong> 82% — missing: SSO config, security questionnaire, TechZone request</div></div>
+    <div class="mvp-row"><span class="mvp-icon">7.</span><div><strong>Approve + send:</strong> Human reviews → approves → artifacts delivered (not auto-sent)</div></div>
+    <br />
+    <div style="display:flex;gap:24px;font-size:13px">
+      <div><span class="check">✓</span> Build time: 2–3 days</div>
+      <div><span class="check">✓</span> No external API dependencies for core flow</div>
+      <div><span class="check">✓</span> TechZone / Monday as add-ons after MVP</div>
+    </div>
+  </div>
+
+  
+  <h2>What to cut from scope</h2>
+  <div class="rec">
+    <strong>Remove for now:</strong> RFP automation is its own product. Don't build it in the same challenge submission — it competes with the Discovery flow for attention and triples the scope.<br /><br />
+    <strong>Keep as "phase 2" slide:</strong> TechZone auto-provisioning, Monday.com sync, Salesforce integration, Slack/Teams channels. Mention them as next steps — don't build them unless the core flow is already polished.<br /><br />
+    <strong>The differentiator</strong> isn't summarization — it's that the agent <em>identifies gaps, flags risks, and routes work</em> before generating anything. That's what separates it from "AI takes meeting notes."
+  </div>
+
+  <div class="footer">Made with IBM Bob</div>
+</div>
+</body>
+</html>
