@@ -1,0 +1,195 @@
+# Progress Log
+
+_Each iteration appends one entry here._
+
+---
+
+## Iteration 1 — 2026-07-15
+
+**Task completed:** Phase 1 — Structured JSON Extraction
+
+**Changes made:**
+- Replaced `SUMMARY_PROMPT` and `ACTION_ITEMS_PROMPT` with single `EXTRACTION_PROMPT` that returns structured JSON
+- JSON schema covers: `stakeholders`, `use_cases`, `integrations`, `deployment_env`, `success_criteria`, `risks`, `action_items`
+- Added JSON parsing with clear error handling (displays parse errors + raw response preview)
+- Replaced old summary/actions display with 7 `st.expander` cards, one per field
+- Changed download button from markdown report to JSON file
+- Increased `max_new_tokens` to 2000 for JSON extraction call
+
+**Key decisions:**
+- Used single extraction call instead of separate summary + actions calls (more efficient, consistent structure)
+- Display all expanders by default for stakeholders and use cases (most important fields), others collapsed
+- Show helpful messages when fields are empty ("No stakeholders identified" vs silent)
+- Severity emoji indicators for risks (🔴 High, 🟡 Medium, 🟢 Low)
+
+**Files changed:**
+- `app.py` — replaced prompts, updated analyze handler, new display logic
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 1 tasks complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 2 — Gap Check (second LLM call to identify missing/vague fields)
+
+---
+
+## Iteration 2 — 2026-07-15
+
+**Task completed:** Phase 2 — Gap Check
+
+**Changes made:**
+- Added `GAP_CHECK_PROMPT` that analyzes extracted JSON for missing/vague fields
+- Implemented `check_gaps()` function that calls watsonx with gap analysis prompt
+- Gap check runs automatically after extraction completes
+- Display readiness status banner (Ready/Needs clarification/Blocked) with color coding
+- Show gaps in expandable section with field name, issue, and specific question to ask client
+- Added "Confirm and continue" button that gates artifact generation (Phase 4)
+- Session state management: clear gap check and confirmation on new analysis
+
+**Key decisions:**
+- Gap check runs immediately after extraction (no separate button) for seamless UX
+- Readiness levels: Ready (green), Needs clarification (yellow), Blocked (red)
+- Confirmation button only shows before confirmation to prevent re-confirmation
+- Graceful fallback if gap check fails (warning but continues)
+- Gap questions formatted as bullet points with ❓ emoji for clarity
+
+**Files changed:**
+- `app.py` — added GAP_CHECK_PROMPT, check_gaps() function, gap display UI, confirmation button
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 2 tasks complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 3 — Risk Detection + Readiness Score (create risk_triggers.py, implement scoring)
+
+---
+
+## Iteration 3 — 2026-07-15
+
+**Task completed:** Phase 3.1 — Create risk_triggers.py
+
+**Changes made:**
+- Created `risk_triggers.py` with comprehensive keyword→risk category mapping
+- Covered all required categories: HIPAA, SAP, GDPR, Voice, on-prem, SSO/Azure AD
+- Added additional relevant triggers: PCI, SOX, FedRAMP, ISO 27001, NIST, FISMA compliance
+- Added enterprise systems: Salesforce, Oracle, Workday, PeopleSoft
+- Added AI-specific triggers: RAG, vector database, embedding, model training, real-time processing
+- Implemented `detect_risks()` function to scan text and return matched risk categories with keywords
+- Implemented `get_risk_severity()` function to assign default severity levels (High/Medium/Low)
+
+**Key decisions:**
+- Used lowercase keywords for case-insensitive matching
+- Grouped related keywords under single risk categories (e.g., "hipaa", "phi", "patient data" → "HIPAA Compliance")
+- Severity levels: High for compliance/security (HIPAA, GDPR, PCI), Medium for integrations/deployment, Low for others
+- Helper functions return structured data ready for UI display
+
+**Files changed:**
+- `risk_triggers.py` — new file with RISK_TRIGGERS dict and helper functions
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 3.1 task complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 3.2 — Implement readiness score (0-100) with point deductions and progress bar display
+
+---
+
+## Iteration 4 — 2026-07-15
+
+**Task completed:** Phase 3.2 — Implement readiness score (0-100) with point deductions and progress bar display
+
+**Changes made:**
+- Added `calculate_readiness_score()` function in `app.py` that:
+  - Starts at 100 points
+  - Deducts 15 points for missing stakeholders
+  - Deducts 20 points for missing use cases, 10 for incomplete descriptions
+  - Deducts 15 points for missing success criteria
+  - Deducts 10 points for unclear deployment environment
+  - Deducts 5 points for unclear integration purposes
+  - Deducts 3-10 points per unmitigated risk (based on severity: High=10, Medium=5, Low=3)
+- Integrated score calculation into analysis flow (runs after gap check)
+- Added readiness score display section with:
+  - Color-coded status banner (green ≥80, yellow ≥60, red <60)
+  - Progress bar visualization
+  - Expandable breakdown table grouped by category (Missing Data, Vague Data, Unmitigated Risk)
+  - Severity emoji indicators for risk-related deductions (🔴 High, 🟡 Medium, 🟢 Low)
+  - Detected risks summary showing risk categories and matched keywords
+- Imported `get_risk_severity` from `risk_triggers.py` for display logic
+
+**Key decisions:**
+- Score calculation uses `risk_triggers.py` to detect risks from meeting notes text
+- Cross-references detected risks with extracted risks to identify unmitigated items
+- Breakdown grouped by category for clarity (Missing Data, Vague Data, Unmitigated Risk)
+- Score display positioned before gap check results (most important metric first)
+- Graceful fallback to score=50 if calculation fails
+
+**Files changed:**
+- `app.py` — added calculate_readiness_score() function, integrated into flow, added display UI
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 3 tasks complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 4 — Artifact Generation Tabs (add four LLM calls for IBM Placemat, PoC Checklist, Architecture summary, Kickoff email)
+
+---
+
+## Iteration 5 — 2026-07-15
+
+**Task completed:** Phase 4.1 & 4.2 — Artifact Generation and Tab Display
+
+**Changes made:**
+- Added 4 new LLM prompts for artifact generation:
+  - `PLACEMAT_PROMPT` — generates IBM Placemat with executive summary, stakeholders, objectives, architecture, risks, next steps
+  - `CHECKLIST_PROMPT` — generates PoC checklist with 15-25 actionable items grouped by phase
+  - `ARCHITECTURE_PROMPT` — generates technical architecture summary with components, integrations, security
+  - `EMAIL_PROMPT` — generates professional kickoff email with subject line and next steps
+- Implemented `generate_artifacts()` function that:
+  - Takes extracted JSON data and model ID
+  - Makes 4 separate watsonx calls (one per artifact)
+  - Returns dict with all 4 artifacts
+  - Handles errors gracefully per artifact
+- Integrated artifact generation into UI flow:
+  - Only generates after user clicks "Confirm and continue"
+  - Shows spinner during generation
+  - Caches artifacts in session state (no regeneration on rerun)
+- Added 4-tab display using `st.tabs()`:
+  - Tab 1: IBM Placemat (markdown)
+  - Tab 2: PoC Checklist (markdown with checkboxes)
+  - Tab 3: Architecture Summary (markdown)
+  - Tab 4: Kickoff Email (text)
+- Each tab has its own download button (.md or .txt format)
+
+**Key decisions:**
+- Generate all 4 artifacts in one batch (better UX than 4 separate buttons)
+- Cache artifacts in session state to avoid regeneration on tab switches
+- Individual download buttons per artifact (ZIP download deferred to next iteration)
+- Error handling per artifact (one failure doesn't block others)
+- Token limits: 2000 for placemat, 1500 for checklist/architecture, 800 for email
+
+**Files changed:**
+- `app.py` — added 4 prompts, generate_artifacts() function, tab display UI
+- `loops/IMPLEMENTATION_PLAN.md` — marked Phase 4.1 and 4.2 complete
+- `loops/PROGRESS.md` — this file
+
+**Next task:** Phase 4.3 + Phase 5 — ZIP download, sample transcript, TechZone button, state reset
+
+---
+
+## Iteration 6 — 2026-07-15
+
+**Task completed:** Phase 4.3 + Phase 5 — ZIP download, sample transcript, TechZone button, state reset
+
+**Changes made:**
+- Added `zipfile` import; built in-memory ZIP via `io.BytesIO` after artifacts are generated, bundling all 4 artifacts + `discovery_extraction.json` into `poc_artifacts.zip` — single primary download button replaces scattered per-artifact downloads
+- Added `SAMPLE_TRANSCRIPT` constant — Nexus Financial Azure/GDPR/SAP/HR onboarding scenario covering all risk trigger categories (GDPR, Azure AD/SSO, SAP, Workday, fine-tuning, data residency, PII)
+- Added "📋 Load sample transcript" button above the text area; clicking it sets `sample_loaded` in session state, clears prior results, and pre-fills the `st.text_area` via `value=` parameter
+- Wired TechZone button: shown only when `readiness_score ≥ 70` AND `cloud_provider` is known; clicking reveals a `st.form` for purpose + notes with a "Confirm request" submit that outputs a JSON summary (no auto-API call)
+- State reset: `extracted_data`, `gap_check`, `readiness_score`, `artifacts`, `confirmed` are all cleared at the top of the Analyse button handler AND when loading the sample transcript
+- Moved `import json` to top-level imports; removed duplicate inline import
+
+**Key decisions:**
+- ZIP also includes `discovery_extraction.json` so the bundle is self-contained
+- TechZone form uses `st.form` to prevent reruns on every widget interaction
+- Sample transcript triggers a `st.rerun()` after clearing state so the text area renders with the pre-filled content on the next pass
+- JSON download button is hidden once artifacts exist (redundant after ZIP is available)
+- `show_techzone_form` session key is separate from `confirmed` to allow independent dismissal
+
+**Files changed:**
+- `app.py` — all Phase 4.3 and Phase 5 changes
+- `loops/IMPLEMENTATION_PLAN.md` — all remaining tasks marked complete
+- `loops/PROGRESS.md` — this entry
+
+**Status:** All tasks in IMPLEMENTATION_PLAN.md complete. ✅

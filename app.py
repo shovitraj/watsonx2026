@@ -1,7 +1,11 @@
-import os
 import io
+import json
+import os
+import zipfile
+
 import streamlit as st
 from dotenv import load_dotenv
+from risk_triggers import get_risk_severity
 
 load_dotenv()
 
@@ -52,6 +56,174 @@ def call_watsonx(prompt: str, model_id: str = DEFAULT_MODEL, max_new_tokens: int
     return str(response).strip()
 
 
+def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
+    """Run gap analysis on extracted data to identify missing or unclear fields."""
+    import json
+    
+    extracted_json = json.dumps(extracted_data, indent=2)
+    prompt = GAP_CHECK_PROMPT.format(extracted_json=extracted_json)
+    
+    raw_response = call_watsonx(prompt, model_id=model_id, max_new_tokens=1000)
+    
+    try:
+        gap_data = json.loads(raw_response)
+        return gap_data
+    except json.JSONDecodeError:
+        # Fallback if parsing fails
+        return {
+            "gaps": [],
+            "readiness": "Needs clarification",
+            "summary": "Unable to parse gap analysis response"
+        }
+
+
+def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
+    """
+    Calculate PoC readiness score (0-100) based on data completeness and risk detection.
+    
+    Scoring logic:
+    - Start at 100 points
+    - Deduct points for missing/empty critical fields
+    - Deduct points for detected risks without mitigation plans
+    
+    Returns:
+        dict with keys: score (int), breakdown (list of deduction items), detected_risks (dict)
+    """
+    from risk_triggers import detect_risks, get_risk_severity
+    
+    score = 100
+    breakdown = []
+    
+    # Check critical fields for completeness
+    stakeholders = extracted_data.get("stakeholders", [])
+    if not stakeholders:
+        score -= 15
+        breakdown.append({"item": "No stakeholders identified", "points": -15, "category": "Missing Data"})
+    
+    use_cases = extracted_data.get("use_cases", [])
+    if not use_cases:
+        score -= 20
+        breakdown.append({"item": "No use cases defined", "points": -20, "category": "Missing Data"})
+    elif any(not uc.get("description") or uc.get("description") == "No description" for uc in use_cases):
+        score -= 10
+        breakdown.append({"item": "Use case descriptions incomplete", "points": -10, "category": "Vague Data"})
+    
+    success_criteria = extracted_data.get("success_criteria", [])
+    if not success_criteria:
+        score -= 15
+        breakdown.append({"item": "No success criteria defined", "points": -15, "category": "Missing Data"})
+    
+    deployment_env = extracted_data.get("deployment_env", {})
+    cloud_provider = deployment_env.get("cloud_provider", "Unknown")
+    if cloud_provider == "Unknown" or not cloud_provider:
+        score -= 10
+        breakdown.append({"item": "Deployment environment unclear", "points": -10, "category": "Vague Data"})
+    
+    integrations = extracted_data.get("integrations", [])
+    if integrations and any(not i.get("purpose") or i.get("purpose") == "No purpose specified" for i in integrations):
+        score -= 5
+        breakdown.append({"item": "Integration purposes unclear", "points": -5, "category": "Vague Data"})
+    
+    # Detect risks from meeting notes
+    detected_risks = detect_risks(notes_text)
+    
+    # Check if risks have mitigation plans
+    extracted_risks = extracted_data.get("risks", [])
+    extracted_risk_texts = [r.get("risk", "").lower() for r in extracted_risks]
+    
+    for risk_category, keywords in detected_risks.items():
+        severity = get_risk_severity(risk_category)
+        
+        # Check if this risk category is mentioned in extracted risks
+        has_mitigation = any(
+            risk_category.lower() in risk_text or 
+            any(kw in risk_text for kw in keywords)
+            for risk_text in extracted_risk_texts
+        )
+        
+        if not has_mitigation:
+            # Deduct points based on severity
+            if severity == "High":
+                deduction = 10
+            elif severity == "Medium":
+                deduction = 5
+            else:
+                deduction = 3
+            
+            score -= deduction
+            breakdown.append({
+                "item": f"{risk_category} detected but no mitigation plan",
+                "points": -deduction,
+                "category": "Unmitigated Risk",
+                "severity": severity
+            })
+    
+    # Ensure score doesn't go below 0
+    score = max(0, score)
+    
+    return {
+        "score": score,
+        "breakdown": breakdown,
+        "detected_risks": detected_risks
+    }
+
+
+def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
+    """
+    Generate all four PoC artifacts from extracted data.
+    
+    Returns:
+        dict with keys: placemat, checklist, architecture, email (all strings)
+    """
+    import json
+    
+    extracted_json = json.dumps(extracted_data, indent=2)
+    
+    artifacts = {}
+    
+    # Generate IBM Placemat
+    try:
+        artifacts["placemat"] = call_watsonx(
+            PLACEMAT_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=2000
+        )
+    except Exception as e:
+        artifacts["placemat"] = f"Error generating placemat: {e}"
+    
+    # Generate PoC Checklist
+    try:
+        artifacts["checklist"] = call_watsonx(
+            CHECKLIST_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=1500
+        )
+    except Exception as e:
+        artifacts["checklist"] = f"Error generating checklist: {e}"
+    
+    # Generate Architecture Summary
+    try:
+        artifacts["architecture"] = call_watsonx(
+            ARCHITECTURE_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=1500
+        )
+    except Exception as e:
+        artifacts["architecture"] = f"Error generating architecture: {e}"
+    
+    # Generate Kickoff Email
+    try:
+        artifacts["email"] = call_watsonx(
+            EMAIL_PROMPT.format(extracted_json=extracted_json),
+            model_id=model_id,
+            max_new_tokens=800
+        )
+    except Exception as e:
+        artifacts["email"] = f"Error generating email: {e}"
+    
+    return artifacts
+
+
 # ── file parsers ──────────────────────────────────────────────────────────────
 
 def parse_txt(file) -> str:
@@ -84,71 +256,309 @@ def extract_text(uploaded_file) -> str:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 
-SUMMARY_PROMPT = """\
+EXTRACTION_PROMPT = """\
 <|system|>
-You are a world-class meeting analyst and executive communicator. Your job is to transform raw \
-meeting notes into a sharp, insightful summary that a senior executive can act on in 60 seconds.
+You are an expert Discovery PoC analyst for IBM watsonx. Your job is to extract structured \
+information from client meeting notes to prepare for a Proof of Concept engagement.
 
-Follow this exact structure — do not add extra sections:
+Extract the following fields from the meeting notes and return them as a JSON object. \
+If a field cannot be determined from the notes, use an empty array [] or empty string "" as appropriate.
 
-## 🗂 Overview
-Write 2–3 crisp sentences capturing the meeting's purpose, who was involved, and the single most \
-important outcome or unresolved tension. Be direct — no filler phrases like "the team discussed".
+Return ONLY valid JSON in this exact structure:
 
-## 💬 Key Discussion Points
-List the most substantive topics raised. For each point:
-- Lead with the **topic** in bold
-- Follow with one sentence of context or the core argument made
-- Include any notable disagreements, risks, or trade-offs surfaced
-- Aim for 3–6 bullets; skip small talk and logistics
-
-## ✅ Decisions Made
-List every explicit decision or commitment reached. If a decision has a clear owner or deadline, \
-include it inline. If no decisions were made, write: *No decisions recorded.*
-
-## ⚠️ Risks & Open Questions
-Call out anything unresolved, blocked, or flagged as a concern — even if briefly mentioned. \
-If nothing was flagged, write: *None identified.*
+{{
+  "stakeholders": [
+    {{"name": "Full Name", "role": "Job Title", "organization": "Company/Dept"}}
+  ],
+  "use_cases": [
+    {{"title": "Brief title", "description": "What they want to achieve"}}
+  ],
+  "integrations": [
+    {{"system": "System name (e.g., SAP, Salesforce)", "purpose": "Why it needs to integrate"}}
+  ],
+  "deployment_env": {{
+    "cloud_provider": "AWS | Azure | IBM Cloud | GCP | On-premises | Hybrid | Unknown",
+    "region": "Geographic region or 'Unknown'",
+    "constraints": "Any compliance, data residency, or infrastructure constraints"
+  }},
+  "success_criteria": [
+    "Measurable outcome 1",
+    "Measurable outcome 2"
+  ],
+  "risks": [
+    {{"risk": "Description of risk or concern", "severity": "High | Medium | Low"}}
+  ],
+  "action_items": [
+    {{"owner": "Person name or 'Unassigned'", "task": "What needs to be done", "due": "Date or 'TBD'"}}
+  ]
+}}
 
 Rules:
-- Use plain, confident language. No corporate jargon or padding.
-- If information for a section is genuinely absent from the notes, say so briefly — do not invent.
-- Output only the structured summary. No preamble, no sign-off.
+- Return ONLY the JSON object — no markdown code fences, no preamble, no explanation
+- Use empty arrays [] for list fields with no data
+- Use empty strings "" for text fields with no data
+- For deployment_env, always include all three sub-fields even if "Unknown" or ""
+- Extract risks even if only briefly mentioned
+- Be precise — do not invent information not present in the notes
 <|user|>
 Meeting notes:
 {notes}
 <|assistant|>
 """
 
-ACTION_ITEMS_PROMPT = """\
+GAP_CHECK_PROMPT = """\
 <|system|>
-You are a world-class meeting analyst specialising in accountability and follow-through. \
-Your job is to extract every commitment, task, and follow-up from the meeting notes and \
-present them in a format a project manager can immediately drop into a tracker.
+You are a Discovery PoC readiness analyst for IBM watsonx. Your job is to review extracted \
+information from client meeting notes and identify what's missing or too vague to proceed \
+with a successful Proof of Concept.
 
-For each action item output a line in this exact format:
-- [ ] **[Owner]** — Task description *(Due: date or "TBD")*
+Review the extracted data below and identify gaps that would prevent a successful PoC. \
+Focus on:
+- Missing or empty critical fields (stakeholders, use cases, success criteria)
+- Vague or incomplete information (e.g., "Unknown" deployment environment, unclear success metrics)
+- Missing technical details needed for scoping (integrations, SSO/IdP, data sources)
+- Unaddressed risks or concerns
 
-Guidelines:
-- **Owner**: use the person's name if mentioned; otherwise write *Unassigned*
-- **Task**: be specific — include enough context so the owner knows exactly what to do \
-without re-reading the notes
-- **Due date**: use the exact date or phrase from the notes; if none given, write *TBD*
-- If an action item implies a demo, proof-of-concept, or product showcase, append the \
-tag `#demo` at the end of that line
-- Group items by owner if there are 4 or more items; otherwise list chronologically
-- If no action items are present, respond with exactly: *No action items identified.*
+Return your analysis as a JSON object with this structure:
+
+{{
+  "gaps": [
+    {{"field": "Field name", "issue": "What's missing or unclear", "question": "Specific question to ask the client"}}
+  ],
+  "readiness": "Ready | Needs clarification | Blocked",
+  "summary": "One-sentence assessment of PoC readiness"
+}}
 
 Rules:
-- Do not invent tasks — only extract what was explicitly stated or clearly implied
-- Do not include vague statements like "we should look into this" unless a person was assigned
-- Output only the action item list. No preamble, no sign-off.
+- Return ONLY the JSON object — no markdown, no preamble
+- List 3-7 gaps maximum — prioritize the most critical ones
+- Each question should be specific and actionable
+- Use "Ready" only if all critical fields are complete and clear
+- Use "Blocked" if multiple critical fields are missing
+
 <|user|>
-Meeting notes:
-{notes}
+Extracted data:
+{extracted_json}
 <|assistant|>
 """
 
+PLACEMAT_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer creating an IBM Placemat document for a Discovery PoC.
+
+Generate a structured IBM Placemat in markdown format based on the extracted discovery data below.
+
+The Placemat should include these sections:
+
+# IBM watsonx Discovery PoC — [Client Name]
+
+## Executive Summary
+Brief 2-3 sentence overview of the engagement
+
+## Stakeholders
+List key stakeholders with roles and organizations
+
+## Business Objectives
+What the client wants to achieve (from use cases)
+
+## Use Cases
+Detailed description of each use case with expected outcomes
+
+## Technical Architecture
+- Deployment environment (cloud provider, region)
+- Required integrations
+- Authentication/SSO requirements
+
+## Success Criteria
+Measurable outcomes that define PoC success
+
+## Risks & Mitigation
+Identified risks with severity and mitigation strategies
+
+## Next Steps
+Action items with owners and due dates
+
+Rules:
+- Use proper markdown formatting (headers, lists, bold)
+- Be professional and concise
+- Extract client name from stakeholders if available, otherwise use "Client"
+- Return ONLY the markdown document — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+CHECKLIST_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer creating a PoC Checklist for a Discovery engagement.
+
+Generate a comprehensive PoC checklist in markdown format with checkboxes based on the extracted data below.
+
+The checklist should cover:
+
+# watsonx PoC Checklist
+
+## Pre-PoC Setup
+- [ ] Stakeholder kickoff meeting scheduled
+- [ ] Access credentials obtained
+- [ ] Development environment provisioned
+- [ ] [Add items based on deployment_env and integrations]
+
+## Technical Requirements
+- [ ] [Items based on integrations, SSO, data sources]
+
+## Use Case Implementation
+- [ ] [One checkbox per use case with key deliverables]
+
+## Testing & Validation
+- [ ] [Items based on success criteria]
+
+## Risk Mitigation
+- [ ] [One checkbox per identified risk]
+
+## Documentation & Handoff
+- [ ] Architecture documentation complete
+- [ ] User guide created
+- [ ] Handoff meeting scheduled
+
+Rules:
+- Use markdown checkbox format: - [ ] Item
+- Be specific and actionable
+- Include 15-25 items total
+- Group related items under headers
+- Return ONLY the markdown checklist — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+ARCHITECTURE_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Architect creating a technical architecture summary for a Discovery PoC.
+
+Generate a concise architecture summary in markdown format based on the extracted data below.
+
+The summary should include:
+
+# Technical Architecture Summary
+
+## Deployment Environment
+- Cloud Provider: [from deployment_env]
+- Region: [from deployment_env]
+- Constraints: [from deployment_env]
+
+## Core Components
+- watsonx.ai foundation models
+- [List other IBM watsonx components needed based on use cases]
+
+## Integration Points
+[List each integration with purpose and data flow]
+
+## Authentication & Security
+[SSO/IdP requirements, security considerations from risks]
+
+## Data Flow
+[High-level description of how data moves through the system]
+
+## Scalability Considerations
+[Based on use cases and deployment environment]
+
+Rules:
+- Be technical but concise
+- Focus on IBM watsonx components
+- Include integration architecture
+- Mention security/compliance requirements from risks
+- Return ONLY the markdown document — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+EMAIL_PROMPT = """\
+<|system|>
+You are an IBM watsonx Solutions Engineer drafting a kickoff email for a Discovery PoC.
+
+Generate a professional kickoff email based on the extracted data below.
+
+The email should:
+- Have a clear subject line
+- Thank attendees for the discovery meeting
+- Summarize key points discussed
+- List next steps with owners and dates
+- Set expectations for the PoC timeline
+- Include a professional closing
+
+Format:
+Subject: [Appropriate subject line]
+
+[Email body]
+
+Rules:
+- Professional but friendly tone
+- 200-300 words
+- Include specific names from stakeholders
+- Reference specific use cases discussed
+- Return ONLY the email text — no preamble, no code fences
+
+<|user|>
+Extracted data:
+{extracted_json}
+<|assistant|>
+"""
+
+
+# ── sample transcript ─────────────────────────────────────────────────────────
+
+SAMPLE_TRANSCRIPT = """\
+Meeting Notes — Discovery Call
+Date: 2026-07-14
+Attendees: Sarah Chen (VP Digital Transformation, Nexus Financial), \
+Marcus Rowe (Enterprise Architect, Nexus Financial), \
+Priya Nair (IBM Client Engineer), \
+Tom Walsh (IBM Account Executive)
+
+--- Discussion ---
+
+Sarah opened by explaining Nexus Financial's strategic priority for FY27: automating \
+HR onboarding and employee support using AI. They have ~4,000 employees across Europe \
+and North America. Current onboarding takes 3-4 weeks; target is under 5 days.
+
+Use Cases:
+1. HR Onboarding Assistant — answer new-hire questions (benefits, policies, IT setup), \
+   integrate with Workday for employee data and SAP SuccessFactors for policy documents.
+2. Employee Helpdesk Chatbot — handle IT and HR tier-1 tickets, route complex issues \
+   to ServiceNow, reduce helpdesk call volume by 40%.
+
+Marcus raised infrastructure constraints: Nexus Financial is Azure-first, West Europe \
+region, with strict GDPR compliance requirements. All PII must stay in EU. They use \
+Azure Active Directory for SSO. No on-premise systems will be involved, but they need \
+data residency guarantees. Marcus also asked about model fine-tuning capabilities.
+
+Sarah flagged a concern: they had a previous AI vendor fail to deliver; leadership \
+needs to see measurable ROI within 90 days of PoC start.
+
+Success criteria discussed:
+- Onboarding assistant answers 80% of new-hire questions without human escalation
+- Helpdesk chatbot deflects 40% of tier-1 tickets
+- PoC delivered and demoed within 8 weeks
+
+Risks noted by Marcus:
+- GDPR data residency — all data must remain in EU
+- Azure AD integration complexity (they use conditional access policies)
+- SAP SuccessFactors API rate limits may affect document retrieval
+
+Action items:
+- Priya to send watsonx.ai architecture proposal by July 22
+- Marcus to share Azure AD tenant details and API credentials for SAP by July 19
+- Sarah to confirm executive sponsor for PoC kickoff meeting
+- Tom to arrange TechZone environment provisioning on IBM Cloud, Frankfurt region
+"""
 
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -208,8 +618,20 @@ def main():
     notes_text = ""
 
     if input_method == "✏️ Paste text":
+        # Sample transcript pre-fill
+        col_pre, _ = st.columns([1, 3])
+        with col_pre:
+            if st.button("📋 Load sample transcript", help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
+                st.session_state["sample_loaded"] = True
+                # Clear any previous analysis when loading sample
+                for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        default_text = SAMPLE_TRANSCRIPT if st.session_state.get("sample_loaded") else ""
         notes_text = st.text_area(
             "Paste your meeting notes here",
+            value=default_text,
             height=280,
             placeholder="e.g. Attendees: Alice, Bob, Carol\n\nAlice presented Q3 results...",
         )
@@ -234,33 +656,367 @@ def main():
     st.divider()
     analyse_disabled = not notes_text.strip()
     if st.button("🔍 Analyse", type="primary", disabled=analyse_disabled, use_container_width=True):
-        with st.spinner("Contacting watsonx…"):
+        # Reset all previous results when starting a new analysis
+        for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
+            st.session_state.pop(key, None)
+        with st.spinner("Extracting structured data from watsonx…"):
             try:
-                summary = call_watsonx(SUMMARY_PROMPT.format(notes=notes_text), model_id=selected_model)
-                actions = call_watsonx(ACTION_ITEMS_PROMPT.format(notes=notes_text), model_id=selected_model)
-                st.session_state["summary"] = summary
-                st.session_state["actions"] = actions
+                raw_response = call_watsonx(
+                    EXTRACTION_PROMPT.format(notes=notes_text),
+                    model_id=selected_model,
+                    max_new_tokens=2000
+                )
+                
+                # Parse JSON response
+                try:
+                    extracted_data = json.loads(raw_response)
+                    st.session_state["extracted_data"] = extracted_data
+                    # Clear previous gap check and confirmation
+                    st.session_state.pop("gap_check", None)
+                    st.session_state.pop("confirmed", None)
+                except json.JSONDecodeError as je:
+                    st.error(
+                        f"Failed to parse watsonx response as JSON.\n\n"
+                        f"**Error:** {je}\n\n"
+                        f"**Raw response (first 500 chars):**\n```\n{raw_response[:500]}\n```"
+                    )
+                    st.stop()
+                    
             except Exception as e:
                 st.error(f"watsonx error: {e}")
                 st.stop()
+        
+        # Run gap check immediately after extraction
+        with st.spinner("Checking for gaps and missing information…"):
+            try:
+                gap_data = check_gaps(st.session_state["extracted_data"], model_id=selected_model)
+                st.session_state["gap_check"] = gap_data
+            except Exception as e:
+                st.warning(f"Gap check failed: {e}")
+                # Continue anyway with empty gap check
+                st.session_state["gap_check"] = {
+                    "gaps": [],
+                    "readiness": "Needs clarification",
+                    "summary": "Gap check unavailable"
+                }
+        
+        # Calculate readiness score
+        with st.spinner("Calculating readiness score…"):
+            try:
+                score_data = calculate_readiness_score(st.session_state["extracted_data"], notes_text)
+                st.session_state["readiness_score"] = score_data
+            except Exception as e:
+                st.warning(f"Readiness score calculation failed: {e}")
+                # Continue with default score
+                st.session_state["readiness_score"] = {
+                    "score": 50,
+                    "breakdown": [{"item": "Score calculation unavailable", "points": -50, "category": "Error"}],
+                    "detected_risks": {}
+                }
 
     # ── results ───────────────────────────────────────────────────────────────
-    if "summary" in st.session_state and "actions" in st.session_state:
+    if "extracted_data" in st.session_state:
         st.divider()
-        render_results(st.session_state["summary"], st.session_state["actions"])
+        data = st.session_state["extracted_data"]
+        
+        # Display readiness score
+        if "readiness_score" in st.session_state:
+            score_data = st.session_state["readiness_score"]
+            score = score_data["score"]
+            breakdown = score_data["breakdown"]
+            detected_risks = score_data["detected_risks"]
+            
+            st.subheader("📊 PoC Readiness Score")
+            
+            # Progress bar with color coding
+            if score >= 80:
+                st.success(f"**Score: {score}/100** — Ready to proceed")
+            elif score >= 60:
+                st.warning(f"**Score: {score}/100** — Needs some clarification")
+            else:
+                st.error(f"**Score: {score}/100** — Significant gaps to address")
+            
+            st.progress(score / 100)
+            
+            # Breakdown table
+            if breakdown:
+                with st.expander("📉 Score breakdown — what reduced the score", expanded=True):
+                    st.markdown("**Point deductions:**")
+                    
+                    # Group by category
+                    categories = {}
+                    for item in breakdown:
+                        cat = item.get("category", "Other")
+                        if cat not in categories:
+                            categories[cat] = []
+                        categories[cat].append(item)
+                    
+                    # Display by category
+                    for category, items in categories.items():
+                        st.markdown(f"**{category}:**")
+                        for item in items:
+                            points = item["points"]
+                            description = item["item"]
+                            severity = item.get("severity", "")
+                            severity_emoji = ""
+                            if severity == "High":
+                                severity_emoji = "🔴 "
+                            elif severity == "Medium":
+                                severity_emoji = "🟡 "
+                            elif severity == "Low":
+                                severity_emoji = "🟢 "
+                            
+                            st.markdown(f"- {severity_emoji}{description}: **{points} points**")
+                        st.markdown("")
+            
+            # Display detected risks
+            if detected_risks:
+                with st.expander(f"⚠️ Detected risks ({len(detected_risks)} categories)", expanded=False):
+                    st.markdown("**Risk triggers found in meeting notes:**")
+                    for risk_category, keywords in detected_risks.items():
+                        severity = get_risk_severity(risk_category)
+                        severity_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                        st.markdown(f"{severity_emoji} **{risk_category}** ({severity})")
+                        st.markdown(f"  - Keywords: {', '.join(keywords[:5])}")
+            
+            st.divider()
+        
+        # Display gap check results
+        if "gap_check" in st.session_state:
+            gap_data = st.session_state["gap_check"]
+            readiness = gap_data.get("readiness", "Needs clarification")
+            summary = gap_data.get("summary", "")
+            gaps = gap_data.get("gaps", [])
+            
+            # Show readiness banner
+            if readiness == "Ready":
+                st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
+            elif readiness == "Blocked":
+                st.error(f"🚫 **PoC Readiness:** {readiness} — {summary}")
+            else:
+                st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
+            
+            # Show gaps if any
+            if gaps:
+                with st.expander("🔍 Missing or unclear information", expanded=True):
+                    st.markdown("**The following items need clarification before proceeding:**")
+                    for gap in gaps:
+                        field = gap.get("field", "Unknown field")
+                        issue = gap.get("issue", "")
+                        question = gap.get("question", "")
+                        st.markdown(f"- **{field}:** {issue}")
+                        if question:
+                            st.markdown(f"  - ❓ _{question}_")
+                    st.divider()
+                    st.markdown("_Review the extracted data below and update your notes if needed, then re-analyze._")
+            
+            # Confirmation button (only show if not already confirmed)
+            if "confirmed" not in st.session_state:
+                st.divider()
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
+                        st.session_state["confirmed"] = True
+                        st.rerun()
+                st.info("👆 Review the extraction above, then confirm to proceed with artifact generation.")
+                st.divider()
+        
+        # Generate and display artifacts (only after confirmation)
+        if st.session_state.get("confirmed"):
+            # Generate artifacts if not already generated
+            if "artifacts" not in st.session_state:
+                with st.spinner("Generating PoC artifacts from watsonx…"):
+                    try:
+                        artifacts = generate_artifacts(data, model_id=selected_model)
+                        st.session_state["artifacts"] = artifacts
+                    except Exception as e:
+                        st.error(f"Failed to generate artifacts: {e}")
+                        st.stop()
+            
+            # Display artifacts in tabs
+            st.divider()
+            st.subheader("📄 Generated PoC Artifacts")
+            
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📋 IBM Placemat",
+                "✅ PoC Checklist",
+                "🏗️ Architecture",
+                "📧 Kickoff Email"
+            ])
 
-        # download combined report
-        report = (
-            "# Meeting Analysis Report\n\n"
-            "## Summary\n\n" + st.session_state["summary"] + "\n\n"
-            "## Action Items\n\n" + st.session_state["actions"]
-        )
-        st.download_button(
-            "⬇️ Download report (.md)",
-            data=report,
-            file_name="meeting_report.md",
-            mime="text/markdown",
-        )
+            artifacts = st.session_state["artifacts"]
+
+            with tab1:
+                st.markdown(artifacts.get("placemat", "No placemat generated"))
+                st.download_button(
+                    "⬇️ Download Placemat (.md)",
+                    data=artifacts.get("placemat", ""),
+                    file_name="ibm_placemat.md",
+                    mime="text/markdown",
+                )
+
+            with tab2:
+                st.markdown(artifacts.get("checklist", "No checklist generated"))
+                st.download_button(
+                    "⬇️ Download Checklist (.md)",
+                    data=artifacts.get("checklist", ""),
+                    file_name="poc_checklist.md",
+                    mime="text/markdown",
+                )
+
+            with tab3:
+                st.markdown(artifacts.get("architecture", "No architecture generated"))
+                st.download_button(
+                    "⬇️ Download Architecture (.md)",
+                    data=artifacts.get("architecture", ""),
+                    file_name="architecture_summary.md",
+                    mime="text/markdown",
+                )
+
+            with tab4:
+                st.markdown(artifacts.get("email", "No email generated"))
+                st.download_button(
+                    "⬇️ Download Email (.txt)",
+                    data=artifacts.get("email", ""),
+                    file_name="kickoff_email.txt",
+                    mime="text/plain",
+                )
+
+            # ZIP download — all four artifacts in one bundle
+            st.divider()
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("ibm_placemat.md",         artifacts.get("placemat", ""))
+                zf.writestr("poc_checklist.md",         artifacts.get("checklist", ""))
+                zf.writestr("architecture_summary.md",  artifacts.get("architecture", ""))
+                zf.writestr("kickoff_email.txt",         artifacts.get("email", ""))
+                zf.writestr("discovery_extraction.json", json.dumps(data, indent=2))
+            zip_buf.seek(0)
+            st.download_button(
+                "📦 Download all artifacts (.zip)",
+                data=zip_buf,
+                file_name="poc_artifacts.zip",
+                mime="application/zip",
+                use_container_width=True,
+                type="primary",
+            )
+
+            # TechZone environment request button (score ≥ 70 + known deployment env)
+            if "readiness_score" in st.session_state:
+                score = st.session_state["readiness_score"]["score"]
+                cloud_provider = data.get("deployment_env", {}).get("cloud_provider", "Unknown")
+                if score >= 70 and cloud_provider not in ("Unknown", "", None):
+                    st.divider()
+                    st.subheader("☁️ TechZone Environment")
+                    st.info(
+                        f"PoC readiness score is **{score}/100** and deployment environment is "
+                        f"**{cloud_provider}** — this engagement is ready for a TechZone provisioning request."
+                    )
+                    col_tz, _ = st.columns([1, 2])
+                    with col_tz:
+                        if st.button(
+                            "🚀 Request TechZone environment",
+                            type="primary",
+                            use_container_width=True,
+                            help="Opens the TechZone request form — no auto-submission",
+                        ):
+                            st.session_state["show_techzone_form"] = True
+
+                    if st.session_state.get("show_techzone_form"):
+                        with st.form("techzone_request_form"):
+                            st.markdown("**TechZone Request Details**")
+                            tz_purpose = st.selectbox(
+                                "Purpose",
+                                ["Demo", "Education", "Test", "Pilot"],
+                                index=2,
+                            )
+                            tz_notes = st.text_area(
+                                "Additional notes",
+                                placeholder="Any specific requirements or context for the TechZone team…",
+                                height=100,
+                            )
+                            submitted = st.form_submit_button("✅ Confirm request", type="primary")
+                            if submitted:
+                                st.success(
+                                    "✅ TechZone request details captured. "
+                                    "Hand these off to your TechZone admin to complete provisioning."
+                                )
+                                st.json({
+                                    "deployment_env": data.get("deployment_env", {}),
+                                    "purpose": tz_purpose,
+                                    "readiness_score": score,
+                                    "notes": tz_notes,
+                                })
+                                st.session_state["show_techzone_form"] = False
+
+            st.divider()
+        
+        # Display extracted fields in expander cards
+        with st.expander("👥 Stakeholders", expanded=True):
+            if data.get("stakeholders"):
+                for s in data["stakeholders"]:
+                    st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
+            else:
+                st.info("No stakeholders identified")
+        
+        with st.expander("🎯 Use Cases", expanded=True):
+            if data.get("use_cases"):
+                for uc in data["use_cases"]:
+                    st.markdown(f"**{uc.get('title', 'Untitled')}**")
+                    st.markdown(f"_{uc.get('description', 'No description')}_")
+                    st.markdown("---")
+            else:
+                st.info("No use cases identified")
+        
+        with st.expander("🔗 Integrations", expanded=False):
+            if data.get("integrations"):
+                for integ in data["integrations"]:
+                    st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
+            else:
+                st.info("No integrations identified")
+        
+        with st.expander("☁️ Deployment Environment", expanded=False):
+            env = data.get("deployment_env", {})
+            st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
+            st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
+            if env.get("constraints"):
+                st.markdown(f"**Constraints:** {env.get('constraints')}")
+        
+        with st.expander("✅ Success Criteria", expanded=False):
+            if data.get("success_criteria"):
+                for sc in data["success_criteria"]:
+                    st.markdown(f"- {sc}")
+            else:
+                st.warning("No success criteria defined")
+        
+        with st.expander("⚠️ Risks", expanded=False):
+            if data.get("risks"):
+                for risk in data["risks"]:
+                    severity = risk.get("severity", "Unknown")
+                    emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                    st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
+            else:
+                st.info("No risks identified")
+        
+        with st.expander("📋 Action Items", expanded=False):
+            if data.get("action_items"):
+                for ai in data["action_items"]:
+                    owner = ai.get("owner", "Unassigned")
+                    task = ai.get("task", "No task description")
+                    due = ai.get("due", "TBD")
+                    st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
+            else:
+                st.info("No action items identified")
+        
+        # Download JSON report (only shown before artifacts are generated)
+        if not st.session_state.get("confirmed"):
+            st.divider()
+            st.download_button(
+                "⬇️ Download extraction (.json)",
+                data=json.dumps(data, indent=2),
+                file_name="discovery_extraction.json",
+                mime="application/json",
+            )
 
 
 if __name__ == "__main__":

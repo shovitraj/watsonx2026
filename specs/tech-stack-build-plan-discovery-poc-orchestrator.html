@@ -1,0 +1,301 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Tech Stack — Discovery PoC Orchestrator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6; color: #1f2328;
+    background: #fff; padding: 32px 24px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .sub { color: #57606a; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+       color: #57606a; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+
+  /* Stack overview */
+  .stack-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+  .stack-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; background: #f7f8fa; }
+  .stack-card.accent { border-left: 3px solid #3b82d4; }
+  .stack-card.green  { border-left: 3px solid #22c55e; }
+  .stack-card.amber  { border-left: 3px solid #f59e0b; }
+  .stack-card.purple { border-left: 3px solid #7c5cd8; }
+  .sc-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  .sc-body { font-size: 12px; color: #1f2328; }
+  .sc-body li { margin-left: 16px; margin-bottom: 2px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .b-blue { background: #dbeafe; color: #1e40af; }
+  .b-green { background: #d1fae5; color: #065f46; }
+  .b-amber { background: #fef3c7; color: #92400e; }
+  .b-purple { background: #ede9fe; color: #5b21b6; }
+  .b-red { background: #fee2e2; color: #991b1b; }
+
+  /* Agent map */
+  .agent-flow { display: flex; flex-direction: column; gap: 2px; }
+  .agent-row { display: flex; align-items: stretch; gap: 0; }
+  .agent-box { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; background: #f7f8fa; }
+  .agent-box.primary { background: #eff6ff; border-color: #93c5fd; }
+  .agent-name { font-weight: 700; font-size: 13px; }
+  .agent-tools { font-size: 11px; color: #57606a; margin-top: 3px; }
+  .arrow-down { text-align: center; color: #57606a; font-size: 18px; padding: 2px 0; }
+  .arrow-right { display: flex; align-items: center; padding: 0 8px; color: #57606a; font-size: 18px; }
+
+  /* File tree */
+  .tree { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px;
+          background: #1f2328; color: #e6edf3; padding: 16px 18px;
+          border-radius: 6px; line-height: 1.8; overflow-x: auto; }
+  .tree .dir { color: #79c0ff; }
+  .tree .file { color: #e6edf3; }
+  .tree .comment { color: #8b949e; }
+  .tree .highlight { color: #ffa657; }
+
+  /* Steps table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f7f8fa; border: 1px solid #e5e7eb; font-weight: 600; color: #57606a; }
+  td { padding: 8px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .num { font-weight: 700; color: #3b82d4; }
+
+  /* Callout */
+  .callout { border-left: 3px solid #3b82d4; background: #eff6ff; padding: 12px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 8px; }
+  .callout.green { border-color: #22c55e; background: #f0fdf4; }
+  .callout.amber { border-color: #f59e0b; background: #fffbeb; }
+  code { font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; background: #f0f0f0; padding: 1px 5px; border-radius: 3px; }
+
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #57606a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Tech Stack — Discovery → PoC Orchestrator</h1>
+  <div class="sub">Based on your workspace: watsonx Orchestrate ADK v2.12.0 + Bob + TechZone MCP</div>
+
+  
+  <h2>The four layers</h2>
+  <div class="stack-grid">
+    <div class="stack-card accent">
+      <div class="sc-title">🧠 Intelligence Layer</div>
+      <div class="sc-body">
+        <span class="badge b-blue">watsonx.ai</span> Granite 3.x or Llama 3<br /><br />
+        <ul>
+          <li>Transcript extraction (structured JSON)</li>
+          <li>Gap detection prompts</li>
+          <li>Placemat + checklist generation</li>
+          <li>Architecture draft from patterns</li>
+          <li>Readiness reasoning</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack-card green">
+      <div class="sc-title">🤖 Orchestration Layer</div>
+      <div class="sc-body">
+        <span class="badge b-green">watsonx Orchestrate ADK v2.12</span><br /><br />
+        <ul>
+          <li>Native agents (YAML spec)</li>
+          <li>Python tools (<code>@tool</code> decorator)</li>
+          <li>Multi-agent collaboration</li>
+          <li>WXOFile for transcript upload</li>
+          <li>Webchat channel (built-in)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack-card amber">
+      <div class="sc-title">🔧 Tool / Action Layer</div>
+      <div class="sc-body">
+        <span class="badge b-amber">Python tools</span> <span class="badge b-amber">MCP servers</span><br /><br />
+        <ul>
+          <li>TechZone MCP — already in this workspace</li>
+          <li>Readiness score calculator (Python)</li>
+          <li>Risk flag detector (Python)</li>
+          <li>Document renderer (Python → markdown)</li>
+          <li>Email drafter (Python)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="stack-card purple">
+      <div class="sc-title">🛠️ Dev Tooling (Bob)</div>
+      <div class="sc-body">
+        <span class="badge b-purple">Bob + wxo-builder skill</span><br /><br />
+        <ul>
+          <li><code>wxo-builder</code> — generates agents from SOPs</li>
+          <li><code>solution-architect</code> — architecture docs</li>
+          <li><code>sop-builder</code> — workflow → SOP</li>
+          <li><code>wxo-analyzer</code> — documents what you built</li>
+          <li>Bob ADK MCP — deploy directly from editor</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  
+  <h2>Agent architecture — who does what</h2>
+  <div class="agent-flow">
+
+    <div class="agent-row">
+      <div class="agent-box primary">
+        <div class="agent-name">🎯 Orchestrator Agent  <span class="badge b-blue">Native · react style</span></div>
+        <div class="agent-tools">Main entry point. Receives transcript, routes to sub-agents, collects results, presents readiness score.</div>
+      </div>
+    </div>
+    <div class="arrow-down">↓ collaborates with</div>
+
+    <div class="agent-row" style="gap:8px">
+      <div class="agent-box">
+        <div class="agent-name">📋 Extraction Agent</div>
+        <div class="agent-tools">Tools: <code>extract_requirements</code>, <code>detect_gaps</code>, <code>flag_risks</code></div>
+      </div>
+      <div class="arrow-right">→</div>
+      <div class="agent-box">
+        <div class="agent-name">📄 Artifact Agent</div>
+        <div class="agent-tools">Tools: <code>generate_placemat</code>, <code>generate_architecture</code>, <code>generate_checklist</code>, <code>draft_email</code></div>
+      </div>
+      <div class="arrow-right">→</div>
+      <div class="agent-box">
+        <div class="agent-name">📊 Readiness Agent</div>
+        <div class="agent-tools">Tools: <code>calculate_readiness_score</code>, <code>provision_techzone</code> (MCP)</div>
+      </div>
+    </div>
+
+  </div>
+  <div class="callout" style="margin-top:10px">
+    <strong>Why 3 sub-agents?</strong> Each agent has a single responsibility. The Orchestrator only routes. This makes it easy to demo each piece independently and add more agents later (e.g. a Stakeholder Routing agent).
+  </div>
+
+  
+  <h2>Project folder structure</h2>
+  <div class="tree">
+<span class="dir">discovery-poc-orchestrator/</span>
+├── <span class="dir">agents/</span>
+│   ├── <span class="highlight">orchestrator_agent.yaml</span>       <span class="comment"># main entry, react style</span>
+│   ├── <span class="highlight">extraction_agent.yaml</span>         <span class="comment"># extracts + gaps + risks</span>
+│   ├── <span class="highlight">artifact_agent.yaml</span>           <span class="comment"># placemat, checklist, email</span>
+│   └── <span class="highlight">readiness_agent.yaml</span>          <span class="comment"># score + techzone</span>
+├── <span class="dir">tools/</span>
+│   ├── <span class="file">extraction_tools.py</span>           <span class="comment"># @tool: extract_requirements, detect_gaps, flag_risks</span>
+│   ├── <span class="file">artifact_tools.py</span>             <span class="comment"># @tool: generate_placemat, generate_architecture, draft_email</span>
+│   ├── <span class="file">readiness_tools.py</span>            <span class="comment"># @tool: calculate_readiness_score</span>
+│   └── <span class="file">requirements.txt</span>              <span class="comment"># pinned deps: openai, pydantic, jinja2</span>
+├── <span class="dir">prompts/</span>
+│   ├── <span class="file">extract_requirements.md</span>       <span class="comment"># prompt template → structured JSON</span>
+│   ├── <span class="file">detect_gaps.md</span>                <span class="comment"># what fields are missing?</span>
+│   ├── <span class="file">generate_placemat.md</span>          <span class="comment"># IBM placemat format</span>
+│   └── <span class="file">generate_architecture.md</span>      <span class="comment"># reference arch patterns</span>
+├── <span class="dir">knowledge/</span>
+│   ├── <span class="file">poc_checklist_template.md</span>     <span class="comment"># standard PoC checklist</span>
+│   ├── <span class="file">architecture_patterns.md</span>      <span class="comment"># reusable arch references</span>
+│   └── <span class="file">risk_triggers.json</span>            <span class="comment"># HIPAA → security, SAP → SME etc</span>
+└── <span class="file">README.md</span>
+  </div>
+
+  
+  <h2>Build order — day by day</h2>
+  <table>
+    <thead>
+      <tr><th>Day</th><th>What to build</th><th>How (Bob + wxO)</th><th>Output</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="num">Day 1</span></td>
+        <td><strong>Extraction + Gap check</strong><br />
+          <code>extract_requirements</code><br />
+          <code>detect_gaps</code><br />
+          <code>flag_risks</code>
+        </td>
+        <td>
+          1. Use <strong>Bob sop-builder skill</strong> to define the workflow<br />
+          2. Use <strong>Bob wxo-builder skill</strong> to generate agent + tool stubs<br />
+          3. Write the 3 Python tools with LLM prompt calls<br />
+          4. Import via ADK: <code>orchestrate tools import -k python</code>
+        </td>
+        <td>Extraction Agent working end-to-end with a sample transcript</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 2</span></td>
+        <td><strong>Artifact generation</strong><br />
+          Placemat · Architecture draft · PoC checklist · Kickoff email
+        </td>
+        <td>
+          1. Write Jinja2 prompt templates in <code>prompts/</code><br />
+          2. Python tools call watsonx.ai with structured extraction as input<br />
+          3. Return markdown — wxO renders it natively in webchat<br />
+          4. Hook up Artifact Agent as collaborator of Orchestrator
+        </td>
+        <td>Full document generation from a transcript</td>
+      </tr>
+      <tr>
+        <td><span class="num">Day 3</span></td>
+        <td><strong>Readiness score + TechZone</strong><br />
+          Readiness Agent · Score display · TechZone request
+        </td>
+        <td>
+          1. <code>calculate_readiness_score</code> — rules engine in Python (no LLM needed)<br />
+          2. TechZone: already available via MCP in this workspace — wire to Readiness Agent<br />
+          3. Add webchat embed: <code>orchestrate channels generate-webchat-embed</code><br />
+          4. Polish Orchestrator instructions for the demo flow
+        </td>
+        <td>Live demo: transcript in → score + artifacts + TechZone request out</td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Which Bob skills to activate — in order</h2>
+  <table>
+    <thead><tr><th>When</th><th>Skill</th><th>What it does for you</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Before writing anything</td>
+        <td><code>sop-builder</code></td>
+        <td>Turn your whiteboard workflow into a proper SOP. This becomes the input to wxo-builder.</td>
+      </tr>
+      <tr>
+        <td>After SOP is done</td>
+        <td><code>wxo-builder</code></td>
+        <td>Generates the agent YAML files, tool stubs, and wiring from your SOP. Saves 50% of boilerplate.</td>
+      </tr>
+      <tr>
+        <td>Architecture doc needed</td>
+        <td><code>solution-architect</code></td>
+        <td>Generates a 3-part solution doc (business overview, tech architecture, implementation plan). Use for the submission.</td>
+      </tr>
+      <tr>
+        <td>After building</td>
+        <td><code>wxo-analyzer</code></td>
+        <td>Auto-documents everything you built — agents, tools, connections — with Mermaid diagrams. Great for the submission deck.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Key decisions made for you</h2>
+  <div class="callout green">
+    <strong>Use WXOFile for transcript upload.</strong> The ADK natively supports file uploads to tools — no need to build a separate upload UI. The Extraction Agent's first tool accepts <code>WXOFile</code> and the webchat renders an upload button automatically.
+  </div>
+  <div class="callout" style="margin-top:8px">
+    <strong>Use react style agents.</strong> For orchestration flows that need to call tools in sequence and reason between steps, <code>style: react</code> is the right choice. The <code>default</code> style is better for simple Q&amp;A.
+  </div>
+  <div class="callout amber" style="margin-top:8px">
+    <strong>TechZone MCP is already connected in this workspace.</strong> You don't need to build that integration — just add <code>provision_techzone_request</code> as a tool on the Readiness Agent and point it at the existing MCP server.
+  </div>
+
+  
+  <h2>What not to build during the challenge</h2>
+  <table>
+    <thead><tr><th>Feature</th><th>Why skip it</th></tr></thead>
+    <tbody>
+      <tr><td>Custom frontend UI</td><td>wxO webchat is already a polished UI. Use <code>generate_webchat_embed</code> and embed it. Zero frontend work.</td></tr>
+      <tr><td>Salesforce / Monday.com connectors</td><td>OAuth + API debugging will eat your entire day. Mention as "phase 2" in the demo.</td></tr>
+      <tr><td>Vector search / RAG knowledge base</td><td>Start with Jinja2 prompt templates. Add a knowledge base after the core flow works.</td></tr>
+      <tr><td>Custom auth / login</td><td>wxO handles auth. Don't build your own.</td></tr>
+      <tr><td>RFP automation</td><td>Separate product. Don't mix it in — it will break your demo flow's clarity.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="footer">Made with IBM Bob</div>
+</div>
+</body>
+</html>
