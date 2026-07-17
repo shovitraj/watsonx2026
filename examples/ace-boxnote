@@ -1,0 +1,183 @@
+ACE Attendees:
+Craig 
+Cameron 
+Vinay
+Rick Greer
+Juan Guiterez
+Patrick Collins- Logicalis (Partner)
+Andra Reddy
+Andrew Ridell- Logicalis (Partner)
+David Tiao
+Kiser Dekendrick
+David Bibayoff
+
+
+Meeting Context
+
+This session continued last week's discussion with the ACE Identity Engineering team. The previous meeting focused on machine identities, secrets management, governance, and AI workload visibility. Today's session, led by Blair (IBM/HashiCorp), focused on an enterprise trust operating model for AI agents.
+Key theme: AI is the use case; identity is the foundation.
+
+Key Discussion Areas
+
+1. Identity Boundary: Managing Agent Identity at Scale
+
+The proposed architecture establishes a unified identity framework for AI agents operating across AWS, GCP, mainframe, and distributed environments.
+Key concepts included:
+Centralized agent identity management through Vault federation, providing a single operational control plane.
+Elimination of standing credentials through just-in-time (JIT) credential issuance.
+Every AI agent receives a unique SPIFFE/SPIRE-issued identity (SVID).
+Agents are automatically registered into an agent registry at identity issuance.
+Benefits include:
+Detection and prevention of rogue or shadow agents.
+Risk-based access controls, with high-risk agents denied credential issuance.
+Dynamic credential generation as agents move across environments.
+Support for both modern and legacy platforms, including mainframes.
+Minimal disruption to existing developer workflows during adoption.
+
+2. Composite Identity: Binding Identity to Intent
+
+A key architectural principle is the creation of a Composite ID, which cryptographically binds multiple attributes together at authentication.
+The Composite ID includes:
+User identity
+Agent identity
+Requested scope/action
+Context
+Time/session attributes
+Notable characteristics:
+Authorization is intentionally deferred until execution ("last-mile authorization").
+Every request receives its own Composite ID.
+Read-only and read-write actions generate separate identities.
+Limits blast radius in the event of prompt injection, credential theft, or compromised agents.
+Serves as the primary audit and traceability mechanism.
+All identity events are converted into SSF/OCSF-compliant telemetry and streamed into an event bus, supporting compliance, observability, and Identity Threat Detection and Response (ITDR) initiatives.
+
+3. Reasoning Boundary: AI Governance Layer
+
+The governance layer sits between identity and execution and is responsible for controlling AI behavior.
+Capabilities discussed include:
+PII filtering
+Prompt injection detection
+Model routing and orchestration
+Policy enforcement
+Cost optimization
+IBM highlighted WatsonX Governance and BOB as examples of governance solutions.
+A key clarification from Cameron was that ACE's governance strategy begins at the use-case level, not the tooling layer. Runtime controls are necessary but should follow business-level approval and governance of AI use cases.
+Additional discussion covered:
+Model selection optimization based on cost and performance requirements.
+Emerging customer practices around token budgeting and AI cost management.
+
+4. Agent-to-Agent (A2A) Communication
+
+The proposed model treats every agent in a workflow as an independently identified entity.
+Key principles:
+Each sub-agent receives its own SVID.
+The originating Composite ID propagates downstream through token exchange.
+Sub-agents inherit context but do not receive standing credentials.
+Attempts to operate outside approved workflows are blocked during authentication.
+Recommended architecture:
+~90% MCP (Model Context Protocol) routing
+~10% direct agent-to-agent communication
+This approach preserves lineage and creates end-to-end accountability across multi-agent workflows.
+
+5. Execution Boundary: MCP Servers and Last-Mile Authorization
+
+A major theme of the discussion was shifting authorization enforcement as close to execution as possible.
+Recommended approach:
+MCP servers become the primary enforcement point.
+Persona-specific MCP servers can be established for platforms such as Terraform, Salesforce, Datadog, and custom applications.
+MCP servers validate:
+User identity
+Agent identity
+Authorized scope
+Request context
+Token validity
+Agents never receive direct credentials.
+Instead:
+MCP servers retrieve credentials from Vault only after policy validation.
+This converts AI-generated actions into deterministic, auditable operations.
+Examples discussed:
+Control Groups requiring secondary approval before credential issuance.
+CIBA (Client-Initiated Backchannel Authentication) for high-risk actions.
+Fraud-prevention workflows where transfers exceeding defined thresholds require explicit user approval regardless of how the request was initiated.
+Enforcement layers capable of catching policy violations that may bypass upstream governance controls.
+
+6. Policy, Compliance, and Adoption Strategy
+
+IBM positioned the architecture around four boundaries:
+Identity
+Reasoning
+Execution
+Last-Mile Authorization
+These boundaries:
+Align to NIST principles.
+Provide end-to-end traceability and auditability.
+Allow organizations to adopt capabilities incrementally based on current maturity.
+An important takeaway was that identity alone is insufficient if authorization remains overly broad.
+Fine-grained authorization depends on:
+Rich Authorization Requests (RAR)
+Policy enforcement at credential vending time
+Context-aware access decisions
+Vault's ability to evaluate policy immediately before credential issuance was highlighted as a critical control point.
+
+ACE Priorities and Roadmap
+
+Immediate Focus: Use Case Governance
+
+ACE currently has approximately 200 known AI use cases, with additional unidentified use cases expected.
+Current priorities:
+Cataloging and governing use cases.
+Establishing governance processes.
+Determining ownership and prioritization.
+The team expects to spend approximately the next month focused on use-case governance before making tooling decisions.
+
+Future Focus: Runtime and API Control Layer
+
+Planned timeline:
+Runtime and API security tooling evaluation targeted for Q4.
+Vendor and platform selection to occur after governance work is completed.
+
+Registry Strategy
+
+ACE anticipates maintaining multiple registries:
+Registry
+Purpose
+Vault Registry
+Agent identity management
+ACE Master Registry
+Enterprise-wide AI, model, vendor, and compliance tracking
+OASIS
+Discovery and metadata enrichment
+The consensus was that different registries will serve distinct purposes rather than converging into a single source of truth.
+
+Key Opportunities for IBM/HashiCorp
+
+Based on the discussion, IBM/HashiCorp appears well-positioned to support ACE in several areas:
+Agent identity and lifecycle management.
+Dynamic secrets and credential management.
+Runtime authorization enforcement.
+AI governance and observability.
+Professional services for operating model implementation.
+Mapping AI use cases into phased adoption and deployment plans.
+A notable area for future discussion is the overlap and differentiation between Vault and CyberArk/Conjur, particularly around secrets-management responsibilities.
+
+Agreed Next Steps
+
+Blair/Aishwarya
+
+Share full reference architecture documentation with the ACE Identity team, including mTLS, MCP-server security patterns, and Consul integrations.
+
+GB
+
+Schedule an IBM product suite overview covering:
+(Separate from ETOM)
+WatsonX
+BOB
+Runtime security and governance capabilities
+
+Kelsey
+
+Schedule a HashiCorp-focused product walkthrough for the ACE Identity team. (Aishwarya & Cameron only)
+Reschedule the business value assessment with Craig as part of the August ELA mutual action plan.
+Organize a use-case mapping workshop to align ACE priorities with a phased implementation roadmap. Ton and Rick should be included.
+Schedule a professional services scoping discussion focused on implementation and operationalization requirements.
+
