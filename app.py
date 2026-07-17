@@ -9,6 +9,30 @@ from risk_triggers import get_risk_severity
 
 load_dotenv()
 
+
+def _extract_json(text: str) -> str:
+    """Strip prose before/after the JSON object and attempt to repair truncation."""
+    start = text.find("{")
+    if start == -1:
+        return text  # let json.loads raise a meaningful error
+    # Try increasingly shorter slices ending at each closing brace
+    end = len(text)
+    while end > start:
+        candidate = text[start:end]
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+        prev = candidate.rfind("}", 0, len(candidate) - 1)
+        if prev == -1:
+            break
+        end = start + prev + 1
+    # Last resort: first { to last }
+    last = text.rfind("}")
+    return text[start : last + 1] if last != -1 else text[start:]
+
+
 # ── watsonx client ────────────────────────────────────────────────────────────
 
 def get_watsonx_client():
@@ -66,7 +90,7 @@ def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
     raw_response = call_watsonx(prompt, model_id=model_id, max_new_tokens=1000)
     
     try:
-        gap_data = json.loads(raw_response)
+        gap_data = json.loads(_extract_json(raw_response))
         return gap_data
     except json.JSONDecodeError:
         # Fallback if parsing fails
@@ -664,12 +688,12 @@ def main():
                 raw_response = call_watsonx(
                     EXTRACTION_PROMPT.format(notes=notes_text),
                     model_id=selected_model,
-                    max_new_tokens=2000
+                    max_new_tokens=4000
                 )
                 
                 # Parse JSON response
                 try:
-                    extracted_data = json.loads(raw_response)
+                    extracted_data = json.loads(_extract_json(raw_response))
                     st.session_state["extracted_data"] = extracted_data
                     # Clear previous gap check and confirmation
                     st.session_state.pop("gap_check", None)
