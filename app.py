@@ -944,62 +944,66 @@ def render_analyzer_tab(selected_model: str):
 
             st.divider()
 
-        # Display extracted fields in expander cards
-        with st.expander("👥 Stakeholders", expanded=False):
-            if data.get("stakeholders"):
-                for s in data["stakeholders"]:
-                    st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
-            else:
-                st.info("No stakeholders identified")
+        # Display extracted fields in 2-column grid layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            with st.expander("👥 Stakeholders", expanded=False):
+                if data.get("stakeholders"):
+                    for s in data["stakeholders"]:
+                        st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
+                else:
+                    st.info("No stakeholders identified")
 
-        with st.expander("🎯 Use Cases", expanded=False):
-            if data.get("use_cases"):
-                for uc in data["use_cases"]:
-                    st.markdown(f"**{uc.get('title', 'Untitled')}**")
-                    st.markdown(f"_{uc.get('description', 'No description')}_")
-                    st.markdown("---")
-            else:
-                st.info("No use cases identified")
+            with st.expander("🎯 Use Cases", expanded=False):
+                if data.get("use_cases"):
+                    for uc in data["use_cases"]:
+                        st.markdown(f"**{uc.get('title', 'Untitled')}**")
+                        st.markdown(f"_{uc.get('description', 'No description')}_")
+                        st.markdown("---")
+                else:
+                    st.info("No use cases identified")
 
-        with st.expander("🔗 Integrations", expanded=False):
-            if data.get("integrations"):
-                for integ in data["integrations"]:
-                    st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
-            else:
-                st.info("No integrations identified")
+            with st.expander("🔗 Integrations", expanded=False):
+                if data.get("integrations"):
+                    for integ in data["integrations"]:
+                        st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
+                else:
+                    st.info("No integrations identified")
+        
+        with col2:
+            with st.expander("☁️ Deployment Environment", expanded=False):
+                env = data.get("deployment_env", {})
+                st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
+                st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
+                if env.get("constraints"):
+                    st.markdown(f"**Constraints:** {env.get('constraints')}")
 
-        with st.expander("☁️ Deployment Environment", expanded=False):
-            env = data.get("deployment_env", {})
-            st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
-            st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
-            if env.get("constraints"):
-                st.markdown(f"**Constraints:** {env.get('constraints')}")
+            with st.expander("✅ Success Criteria", expanded=False):
+                if data.get("success_criteria"):
+                    for sc in data["success_criteria"]:
+                        st.markdown(f"- {sc}")
+                else:
+                    st.warning("No success criteria defined")
 
-        with st.expander("✅ Success Criteria", expanded=False):
-            if data.get("success_criteria"):
-                for sc in data["success_criteria"]:
-                    st.markdown(f"- {sc}")
-            else:
-                st.warning("No success criteria defined")
+            with st.expander("⚠️ Risks", expanded=False):
+                if data.get("risks"):
+                    for risk in data["risks"]:
+                        severity = risk.get("severity", "Unknown")
+                        emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                        st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
+                else:
+                    st.info("No risks identified")
 
-        with st.expander("⚠️ Risks", expanded=False):
-            if data.get("risks"):
-                for risk in data["risks"]:
-                    severity = risk.get("severity", "Unknown")
-                    emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                    st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
-            else:
-                st.info("No risks identified")
-
-        with st.expander("📋 Action Items", expanded=False):
-            if data.get("action_items"):
-                for ai in data["action_items"]:
-                    owner = ai.get("owner", "Unassigned")
-                    task = ai.get("task", "No task description")
-                    due = ai.get("due", "TBD")
-                    st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
-            else:
-                st.info("No action items identified")
+            with st.expander("📋 Action Items", expanded=False):
+                if data.get("action_items"):
+                    for ai in data["action_items"]:
+                        owner = ai.get("owner", "Unassigned")
+                        task = ai.get("task", "No task description")
+                        due = ai.get("due", "TBD")
+                        st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
+                else:
+                    st.info("No action items identified")
 
         # Download JSON report (only shown before artifacts are generated)
         if not st.session_state.get("confirmed"):

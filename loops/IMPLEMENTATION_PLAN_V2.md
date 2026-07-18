@@ -8,7 +8,7 @@
 ## Phase 7: Compact UI (Less Scrolling)
 - [x] Move model selector and PoC readiness score badge into `st.sidebar` — free up main area vertical space.
 - [x] Collapse all `st.expander` cards by default (`expanded=False`) except the active result section.
-- [ ] Show extraction fields (stakeholders, use cases, risks, etc.) in a 2-column grid layout using `st.columns` instead of stacked expanders.
+- [x] Show extraction fields (stakeholders, use cases, risks, etc.) in a 2-column grid layout using `st.columns` instead of stacked expanders.
 - [ ] Move gap check and score breakdown into a single collapsed expander; show only the score banner and readiness status inline.
 - [ ] Reduce text area height from 280 to 180px; move Upload/Paste toggle inline with the Load Sample button.
 

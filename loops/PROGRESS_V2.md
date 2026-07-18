@@ -64,3 +64,21 @@ _Each iteration appends one entry here._
 **Next task:** Phase 7.3 — Show extraction fields in 2-column grid layout using `st.columns`
 
 ---
+
+
+## Iteration 4 — 2026-07-18
+
+**Task completed:** Phase 7.3 — Show extraction fields in 2-column grid layout
+
+**Key decisions:**
+- Replaced stacked expanders with `st.columns(2)` layout for extraction fields
+- Left column: Stakeholders, Use Cases, Integrations
+- Right column: Deployment Environment, Success Criteria, Risks, Action Items
+- Maintains all existing expander functionality (collapsed by default)
+- Significantly reduces vertical scrolling in the analyzer results section
+
+**Files changed:**
+- `app.py` — Restructured extraction fields display (~60 lines) to use 2-column grid
+- `loops/IMPLEMENTATION_PLAN_V2.md` — Marked Phase 7.3 as complete
+
+**Next task:** Phase 7.4 — Move gap check and score breakdown into a single collapsed expander; show only the score banner and readiness status inline
