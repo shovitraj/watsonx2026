@@ -26,3 +26,23 @@ _Each iteration appends one entry here._
 - Reduce text area height and reorganize input controls
 
 ---
+
+## Iteration 2 — 2026-07-18
+
+**Task completed:** Phase 7.1 — Move model selector and readiness score to sidebar
+
+**Key decisions:**
+- Model selector now in `st.sidebar` under "⚙️ Configuration" header
+- Readiness score badge displays in sidebar when available (analyzer tab only)
+- Score badge shows color-coded status: green (≥80), yellow (≥60), red (<60)
+- Removed redundant "📊 PoC Readiness Score" heading from main area
+- Sidebar score updates automatically when analysis completes
+
+**Files changed:**
+- `app.py` — Moved model selector and readiness badge to sidebar in `main()` function
+- `app.py` — Removed duplicate score heading from analyzer results section
+- `loops/IMPLEMENTATION_PLAN_V2.md` — Marked Phase 7.1 as complete
+
+**Next task:** Phase 7.2 — Collapse all `st.expander` cards by default (`expanded=False`)
+
+---

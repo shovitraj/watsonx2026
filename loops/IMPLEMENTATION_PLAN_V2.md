@@ -6,7 +6,7 @@
 - [x] Ensure all session state keys are namespaced per-tab so Demo and Analyzer don't interfere.
 
 ## Phase 7: Compact UI (Less Scrolling)
-- [ ] Move model selector and PoC readiness score badge into `st.sidebar` — free up main area vertical space.
+- [x] Move model selector and PoC readiness score badge into `st.sidebar` — free up main area vertical space.
 - [ ] Collapse all `st.expander` cards by default (`expanded=False`) except the active result section.
 - [ ] Show extraction fields (stakeholders, use cases, risks, etc.) in a 2-column grid layout using `st.columns` instead of stacked expanders.
 - [ ] Move gap check and score breakdown into a single collapsed expander; show only the score banner and readiness status inline.

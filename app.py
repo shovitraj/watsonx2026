@@ -724,24 +724,12 @@ def render_analyzer_tab(selected_model: str):
         st.divider()
         data = st.session_state["extracted_data"]
 
-        # Display readiness score
+        # Readiness score details (score badge is now in sidebar)
         if "readiness_score" in st.session_state:
             score_data = st.session_state["readiness_score"]
             score = score_data["score"]
             breakdown = score_data["breakdown"]
             detected_risks = score_data["detected_risks"]
-
-            st.subheader("📊 PoC Readiness Score")
-
-            # Progress bar with color coding
-            if score >= 80:
-                st.success(f"**Score: {score}/100** — Ready to proceed")
-            elif score >= 60:
-                st.warning(f"**Score: {score}/100** — Needs some clarification")
-            else:
-                st.error(f"**Score: {score}/100** — Significant gaps to address")
-
-            st.progress(score / 100)
 
             # Breakdown table
             if breakdown:
@@ -1375,16 +1363,36 @@ def main():
 
     st.title("🎙️ Meeting Notes Analyzer")
 
-    selected_model = st.selectbox(
-        "🤖 Model",
-        options=SUPPORTED_MODELS,
-        index=SUPPORTED_MODELS.index(DEFAULT_MODEL),
-        help="Select a watsonx text-generation model",
-    )
-    st.caption(f"Powered by IBM watsonx · `{selected_model}`")
-
     if not check_env():
         st.stop()
+
+    # Sidebar: Model selector and readiness score
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        selected_model = st.selectbox(
+            "🤖 Model",
+            options=SUPPORTED_MODELS,
+            index=SUPPORTED_MODELS.index(DEFAULT_MODEL),
+            help="Select a watsonx text-generation model",
+        )
+        st.caption(f"Powered by IBM watsonx")
+        st.caption(f"`{selected_model}`")
+        
+        # Display readiness score if available (analyzer tab only)
+        if "readiness_score" in st.session_state and "extracted_data" in st.session_state:
+            st.divider()
+            st.header("📊 Readiness")
+            score = st.session_state["readiness_score"]["score"]
+            if score >= 80:
+                st.success(f"**{score}/100**")
+                st.caption("✅ Ready to proceed")
+            elif score >= 60:
+                st.warning(f"**{score}/100**")
+                st.caption("⚠️ Needs clarification")
+            else:
+                st.error(f"**{score}/100**")
+                st.caption("🚫 Significant gaps")
+            st.progress(score / 100)
 
     analyzer_tab, demo_tab = st.tabs(["🔬 PoC Analyzer", "🎬 Demo"])
 
