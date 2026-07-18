@@ -83,12 +83,12 @@ def call_watsonx(prompt: str, model_id: str = DEFAULT_MODEL, max_new_tokens: int
 def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
     """Run gap analysis on extracted data to identify missing or unclear fields."""
     import json
-    
+
     extracted_json = json.dumps(extracted_data, indent=2)
     prompt = GAP_CHECK_PROMPT.format(extracted_json=extracted_json)
-    
+
     raw_response = call_watsonx(prompt, model_id=model_id, max_new_tokens=1000)
-    
+
     try:
         gap_data = json.loads(_extract_json(raw_response))
         return gap_data
@@ -104,26 +104,26 @@ def check_gaps(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
 def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
     """
     Calculate PoC readiness score (0-100) based on data completeness and risk detection.
-    
+
     Scoring logic:
     - Start at 100 points
     - Deduct points for missing/empty critical fields
     - Deduct points for detected risks without mitigation plans
-    
+
     Returns:
         dict with keys: score (int), breakdown (list of deduction items), detected_risks (dict)
     """
     from risk_triggers import detect_risks, get_risk_severity
-    
+
     score = 100
     breakdown = []
-    
+
     # Check critical fields for completeness
     stakeholders = extracted_data.get("stakeholders", [])
     if not stakeholders:
         score -= 15
         breakdown.append({"item": "No stakeholders identified", "points": -15, "category": "Missing Data"})
-    
+
     use_cases = extracted_data.get("use_cases", [])
     if not use_cases:
         score -= 20
@@ -131,40 +131,40 @@ def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
     elif any(not uc.get("description") or uc.get("description") == "No description" for uc in use_cases):
         score -= 10
         breakdown.append({"item": "Use case descriptions incomplete", "points": -10, "category": "Vague Data"})
-    
+
     success_criteria = extracted_data.get("success_criteria", [])
     if not success_criteria:
         score -= 15
         breakdown.append({"item": "No success criteria defined", "points": -15, "category": "Missing Data"})
-    
+
     deployment_env = extracted_data.get("deployment_env", {})
     cloud_provider = deployment_env.get("cloud_provider", "Unknown")
     if cloud_provider == "Unknown" or not cloud_provider:
         score -= 10
         breakdown.append({"item": "Deployment environment unclear", "points": -10, "category": "Vague Data"})
-    
+
     integrations = extracted_data.get("integrations", [])
     if integrations and any(not i.get("purpose") or i.get("purpose") == "No purpose specified" for i in integrations):
         score -= 5
         breakdown.append({"item": "Integration purposes unclear", "points": -5, "category": "Vague Data"})
-    
+
     # Detect risks from meeting notes
     detected_risks = detect_risks(notes_text)
-    
+
     # Check if risks have mitigation plans
     extracted_risks = extracted_data.get("risks", [])
     extracted_risk_texts = [r.get("risk", "").lower() for r in extracted_risks]
-    
+
     for risk_category, keywords in detected_risks.items():
         severity = get_risk_severity(risk_category)
-        
+
         # Check if this risk category is mentioned in extracted risks
         has_mitigation = any(
-            risk_category.lower() in risk_text or 
+            risk_category.lower() in risk_text or
             any(kw in risk_text for kw in keywords)
             for risk_text in extracted_risk_texts
         )
-        
+
         if not has_mitigation:
             # Deduct points based on severity
             if severity == "High":
@@ -173,7 +173,7 @@ def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
                 deduction = 5
             else:
                 deduction = 3
-            
+
             score -= deduction
             breakdown.append({
                 "item": f"{risk_category} detected but no mitigation plan",
@@ -181,10 +181,10 @@ def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
                 "category": "Unmitigated Risk",
                 "severity": severity
             })
-    
+
     # Ensure score doesn't go below 0
     score = max(0, score)
-    
+
     return {
         "score": score,
         "breakdown": breakdown,
@@ -195,16 +195,16 @@ def calculate_readiness_score(extracted_data: dict, notes_text: str) -> dict:
 def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> dict:
     """
     Generate all four PoC artifacts from extracted data.
-    
+
     Returns:
         dict with keys: placemat, checklist, architecture, email (all strings)
     """
     import json
-    
+
     extracted_json = json.dumps(extracted_data, indent=2)
-    
+
     artifacts = {}
-    
+
     # Generate IBM Placemat
     try:
         artifacts["placemat"] = call_watsonx(
@@ -214,7 +214,7 @@ def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> d
         )
     except Exception as e:
         artifacts["placemat"] = f"Error generating placemat: {e}"
-    
+
     # Generate PoC Checklist
     try:
         artifacts["checklist"] = call_watsonx(
@@ -224,7 +224,7 @@ def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> d
         )
     except Exception as e:
         artifacts["checklist"] = f"Error generating checklist: {e}"
-    
+
     # Generate Architecture Summary
     try:
         artifacts["architecture"] = call_watsonx(
@@ -234,7 +234,7 @@ def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> d
         )
     except Exception as e:
         artifacts["architecture"] = f"Error generating architecture: {e}"
-    
+
     # Generate Kickoff Email
     try:
         artifacts["email"] = call_watsonx(
@@ -244,7 +244,7 @@ def generate_artifacts(extracted_data: dict, model_id: str = DEFAULT_MODEL) -> d
         )
     except Exception as e:
         artifacts["email"] = f"Error generating email: {e}"
-    
+
     return artifacts
 
 
@@ -584,6 +584,100 @@ Action items:
 - Tom to arrange TechZone environment provisioning on IBM Cloud, Frankfurt region
 """
 
+# ── TechZone MCP integration ──────────────────────────────────────────────────
+
+TECHZONE_MCP_URL = os.getenv(
+    "TECHZONE_MCP_URL",
+    "https://mcp.techzone.ibm.com/servers/c7442b81221647c3b36c75df4f2f88e8/mcp",
+)
+
+
+def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict:
+    """
+    Submit a TechZone environment request via the TechZone MCP HTTP endpoint.
+
+    Uses JSON-RPC 2.0 over streamable-http transport.
+    Returns a dict with keys: success (bool), request_id (str), status (str), error (str).
+    """
+    import httpx
+    from datetime import datetime, timezone
+
+    api_key = os.getenv("TECHZONE_API_KEY", "")
+    if not api_key:
+        return {"success": False, "error": "TECHZONE_API_KEY not set"}
+
+    # Derive geography from region string (best-effort)
+    region = (deployment_env.get("region") or "").lower()
+    if any(k in region for k in ("europe", "eu", "frankfurt", "london", "amsterdam")):
+        geography = "europe"
+    elif any(k in region for k in ("asia", "japan", "tokyo", "sydney", "singapore")):
+        geography = "asia"
+    else:
+        geography = "americas"
+
+    start_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "request-mcp-techzone-create-request",
+            "arguments": {
+                "platformId": deployment_env.get("cloud_provider", "ibmcloud"),
+                "start": start_utc,
+                "bearerToken": api_key,
+                "purpose": purpose,
+                "geography": geography,
+            },
+        },
+    }
+
+    try:
+        response = httpx.post(
+            TECHZONE_MCP_URL,
+            json=payload,
+            headers={
+                "TechZone-Token": api_key,
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract result from JSON-RPC envelope
+        result = data.get("result", {})
+        content = result.get("content", [{}])
+        text = content[0].get("text", "") if content else str(result)
+
+        # Try to parse the inner result text as JSON
+        try:
+            inner = json.loads(text) if text else {}
+        except (json.JSONDecodeError, TypeError):
+            inner = {"raw": text}
+
+        request_id = (
+            inner.get("id")
+            or inner.get("requestId")
+            or inner.get("_id")
+            or "—"
+        )
+        status = inner.get("status") or inner.get("state") or "Submitted"
+
+        return {
+            "success": True,
+            "request_id": str(request_id),
+            "status": str(status),
+            "raw": inner,
+        }
+
+    except httpx.HTTPStatusError as e:
+        return {"success": False, "error": f"HTTP {e.response.status_code}: {e.response.text[:300]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
 def check_env() -> bool:
@@ -607,56 +701,36 @@ def render_results(summary: str, actions: str):
         st.markdown(actions)
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    st.set_page_config(
-        page_title="Meeting Notes Analyzer",
-        page_icon="🎙️",
-        layout="wide",
-    )
-
-    st.title("🎙️ Meeting Notes Analyzer")
-
-    selected_model = st.selectbox(
-        "🤖 Model",
-        options=SUPPORTED_MODELS,
-        index=SUPPORTED_MODELS.index(DEFAULT_MODEL),
-        help="Select a watsonx text-generation model",
-    )
-    st.caption(f"Powered by IBM watsonx · `{selected_model}`")
-
-    if not check_env():
-        st.stop()
+def render_analyzer_tab(selected_model: str):
+    st.subheader("🔬 PoC Analyzer")
 
     st.divider()
 
     # ── input section ─────────────────────────────────────────────────────────
-    input_method = st.radio(
-        "Input method",
-        ["✏️ Paste text", "📎 Upload file"],
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-
-    notes_text = ""
-
-    if input_method == "✏️ Paste text":
-        # Sample transcript pre-fill
-        col_pre, _ = st.columns([1, 3])
-        with col_pre:
-            if st.button("📋 Load sample transcript", help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
+    col_method, col_sample = st.columns([2, 1])
+    with col_method:
+        input_method = st.radio(
+            "Input method",
+            ["✏️ Paste text", "📎 Upload file"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with col_sample:
+        if input_method == "✏️ Paste text":
+            if st.button("📋 Load sample", use_container_width=True, help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
                 st.session_state["sample_loaded"] = True
-                # Clear any previous analysis when loading sample
                 for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
                     st.session_state.pop(key, None)
                 st.rerun()
 
+    notes_text = ""
+
+    if input_method == "✏️ Paste text":
         default_text = SAMPLE_TRANSCRIPT if st.session_state.get("sample_loaded") else ""
         notes_text = st.text_area(
             "Paste your meeting notes here",
             value=default_text,
-            height=280,
+            height=180,
             placeholder="e.g. Attendees: Alice, Bob, Carol\n\nAlice presented Q3 results...",
         )
 
@@ -690,7 +764,7 @@ def main():
                     model_id=selected_model,
                     max_new_tokens=4000
                 )
-                
+
                 # Parse JSON response
                 try:
                     extracted_data = json.loads(_extract_json(raw_response))
@@ -705,11 +779,11 @@ def main():
                         f"**Raw response (first 500 chars):**\n```\n{raw_response[:500]}\n```"
                     )
                     st.stop()
-                    
+
             except Exception as e:
                 st.error(f"watsonx error: {e}")
                 st.stop()
-        
+
         # Run gap check immediately after extraction
         with st.spinner("Checking for gaps and missing information…"):
             try:
@@ -723,7 +797,7 @@ def main():
                     "readiness": "Needs clarification",
                     "summary": "Gap check unavailable"
                 }
-        
+
         # Calculate readiness score
         with st.spinner("Calculating readiness score…"):
             try:
@@ -742,109 +816,85 @@ def main():
     if "extracted_data" in st.session_state:
         st.divider()
         data = st.session_state["extracted_data"]
-        
-        # Display readiness score
+
+        # ── Inline banners (score + readiness) ───────────────────────────────
+        score = None
         if "readiness_score" in st.session_state:
             score_data = st.session_state["readiness_score"]
             score = score_data["score"]
-            breakdown = score_data["breakdown"]
-            detected_risks = score_data["detected_risks"]
-            
-            st.subheader("📊 PoC Readiness Score")
-            
-            # Progress bar with color coding
             if score >= 80:
                 st.success(f"**Score: {score}/100** — Ready to proceed")
             elif score >= 60:
                 st.warning(f"**Score: {score}/100** — Needs some clarification")
             else:
                 st.error(f"**Score: {score}/100** — Significant gaps to address")
-            
             st.progress(score / 100)
-            
-            # Breakdown table
-            if breakdown:
-                with st.expander("📉 Score breakdown — what reduced the score", expanded=True):
-                    st.markdown("**Point deductions:**")
-                    
-                    # Group by category
-                    categories = {}
-                    for item in breakdown:
-                        cat = item.get("category", "Other")
-                        if cat not in categories:
-                            categories[cat] = []
-                        categories[cat].append(item)
-                    
-                    # Display by category
-                    for category, items in categories.items():
-                        st.markdown(f"**{category}:**")
-                        for item in items:
-                            points = item["points"]
-                            description = item["item"]
-                            severity = item.get("severity", "")
-                            severity_emoji = ""
-                            if severity == "High":
-                                severity_emoji = "🔴 "
-                            elif severity == "Medium":
-                                severity_emoji = "🟡 "
-                            elif severity == "Low":
-                                severity_emoji = "🟢 "
-                            
-                            st.markdown(f"- {severity_emoji}{description}: **{points} points**")
-                        st.markdown("")
-            
-            # Display detected risks
-            if detected_risks:
-                with st.expander(f"⚠️ Detected risks ({len(detected_risks)} categories)", expanded=False):
-                    st.markdown("**Risk triggers found in meeting notes:**")
-                    for risk_category, keywords in detected_risks.items():
-                        severity = get_risk_severity(risk_category)
-                        severity_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                        st.markdown(f"{severity_emoji} **{risk_category}** ({severity})")
-                        st.markdown(f"  - Keywords: {', '.join(keywords[:5])}")
-            
-            st.divider()
-        
-        # Display gap check results
+
         if "gap_check" in st.session_state:
             gap_data = st.session_state["gap_check"]
             readiness = gap_data.get("readiness", "Needs clarification")
             summary = gap_data.get("summary", "")
-            gaps = gap_data.get("gaps", [])
-            
-            # Show readiness banner
             if readiness == "Ready":
                 st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
             elif readiness == "Blocked":
                 st.error(f"🚫 **PoC Readiness:** {readiness} — {summary}")
             else:
                 st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
-            
-            # Show gaps if any
-            if gaps:
-                with st.expander("🔍 Missing or unclear information", expanded=True):
-                    st.markdown("**The following items need clarification before proceeding:**")
-                    for gap in gaps:
-                        field = gap.get("field", "Unknown field")
-                        issue = gap.get("issue", "")
-                        question = gap.get("question", "")
-                        st.markdown(f"- **{field}:** {issue}")
-                        if question:
-                            st.markdown(f"  - ❓ _{question}_")
-                    st.divider()
-                    st.markdown("_Review the extracted data below and update your notes if needed, then re-analyze._")
-            
-            # Confirmation button (only show if not already confirmed)
-            if "confirmed" not in st.session_state:
-                st.divider()
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
-                        st.session_state["confirmed"] = True
-                        st.rerun()
-                st.info("👆 Review the extraction above, then confirm to proceed with artifact generation.")
-                st.divider()
-        
+
+        # ── Single collapsed expander for all details ─────────────────────────
+        has_details = (
+            "readiness_score" in st.session_state or "gap_check" in st.session_state
+        )
+        if has_details:
+            with st.expander("🔍 Analysis details — score breakdown, risks & gaps", expanded=False):
+                if "readiness_score" in st.session_state:
+                    score_data = st.session_state["readiness_score"]
+                    breakdown = score_data["breakdown"]
+                    detected_risks = score_data["detected_risks"]
+
+                    if breakdown:
+                        st.markdown("**📉 Score deductions:**")
+                        categories: dict = {}
+                        for item in breakdown:
+                            cat = item.get("category", "Other")
+                            categories.setdefault(cat, []).append(item)
+                        for category, items in categories.items():
+                            st.markdown(f"*{category}:*")
+                            for item in items:
+                                sev = item.get("severity", "")
+                                sev_emoji = "🔴 " if sev == "High" else "🟡 " if sev == "Medium" else "🟢 " if sev == "Low" else ""
+                                st.markdown(f"- {sev_emoji}{item['item']}: **{item['points']} pts**")
+
+                    if detected_risks:
+                        st.markdown("---")
+                        st.markdown(f"**⚠️ Risk triggers ({len(detected_risks)} categories):**")
+                        for risk_category, keywords in detected_risks.items():
+                            severity = get_risk_severity(risk_category)
+                            sev_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                            st.markdown(f"{sev_emoji} **{risk_category}** — {', '.join(keywords[:5])}")
+
+                if "gap_check" in st.session_state:
+                    gaps = st.session_state["gap_check"].get("gaps", [])
+                    if gaps:
+                        st.markdown("---")
+                        st.markdown("**🔍 Gaps & clarification questions:**")
+                        for gap in gaps:
+                            st.markdown(f"- **{gap.get('field', '')}:** {gap.get('issue', '')}")
+                            if gap.get("question"):
+                                st.markdown(f"  - ❓ _{gap['question']}_")
+                        st.caption("Update your notes to address gaps, then re-analyse.")
+
+        # ── Confirm button ────────────────────────────────────────────────────
+        if "gap_check" in st.session_state and "confirmed" not in st.session_state:
+            st.divider()
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
+                    st.session_state["confirmed"] = True
+                    st.rerun()
+            st.info("👆 Review details above, then confirm to generate artifacts.")
+            st.divider()
+
         # Generate and display artifacts (only after confirmation)
         if st.session_state.get("confirmed"):
             # Generate artifacts if not already generated
@@ -856,11 +906,11 @@ def main():
                     except Exception as e:
                         st.error(f"Failed to generate artifacts: {e}")
                         st.stop()
-            
+
             # Display artifacts in tabs
             st.divider()
             st.subheader("📄 Generated PoC Artifacts")
-            
+
             tab1, tab2, tab3, tab4 = st.tabs([
                 "📋 IBM Placemat",
                 "✅ PoC Checklist",
@@ -910,10 +960,10 @@ def main():
             st.divider()
             zip_buf = io.BytesIO()
             with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("ibm_placemat.md",         artifacts.get("placemat", ""))
-                zf.writestr("poc_checklist.md",         artifacts.get("checklist", ""))
-                zf.writestr("architecture_summary.md",  artifacts.get("architecture", ""))
-                zf.writestr("kickoff_email.txt",         artifacts.get("email", ""))
+                zf.writestr("ibm_placemat.md", artifacts.get("placemat", ""))
+                zf.writestr("poc_checklist.md", artifacts.get("checklist", ""))
+                zf.writestr("architecture_summary.md", artifacts.get("architecture", ""))
+                zf.writestr("kickoff_email.txt", artifacts.get("email", ""))
                 zf.writestr("discovery_extraction.json", json.dumps(data, indent=2))
             zip_buf.seek(0)
             st.download_button(
@@ -932,106 +982,128 @@ def main():
                 if score >= 70 and cloud_provider not in ("Unknown", "", None):
                     st.divider()
                     st.subheader("☁️ TechZone Environment")
-                    st.info(
-                        f"PoC readiness score is **{score}/100** and deployment environment is "
-                        f"**{cloud_provider}** — this engagement is ready for a TechZone provisioning request."
-                    )
-                    col_tz, _ = st.columns([1, 2])
-                    with col_tz:
-                        if st.button(
-                            "🚀 Request TechZone environment",
-                            type="primary",
-                            use_container_width=True,
-                            help="Opens the TechZone request form — no auto-submission",
-                        ):
-                            st.session_state["show_techzone_form"] = True
 
-                    if st.session_state.get("show_techzone_form"):
-                        with st.form("techzone_request_form"):
-                            st.markdown("**TechZone Request Details**")
-                            tz_purpose = st.selectbox(
-                                "Purpose",
-                                ["Demo", "Education", "Test", "Pilot"],
-                                index=2,
-                            )
-                            tz_notes = st.text_area(
-                                "Additional notes",
-                                placeholder="Any specific requirements or context for the TechZone team…",
-                                height=100,
-                            )
-                            submitted = st.form_submit_button("✅ Confirm request", type="primary")
-                            if submitted:
-                                st.success(
-                                    "✅ TechZone request details captured. "
-                                    "Hand these off to your TechZone admin to complete provisioning."
-                                )
-                                st.json({
-                                    "deployment_env": data.get("deployment_env", {}),
-                                    "purpose": tz_purpose,
-                                    "readiness_score": score,
-                                    "notes": tz_notes,
-                                })
-                                st.session_state["show_techzone_form"] = False
+                    techzone_key = os.getenv("TECHZONE_API_KEY", "")
+                    if not techzone_key:
+                        st.info(
+                            "PoC readiness score is **{}/100** — set `TECHZONE_API_KEY` in `.env` "
+                            "to enable live TechZone provisioning.".format(score)
+                        )
+                    else:
+                        st.info(
+                            f"PoC readiness score is **{score}/100** and deployment environment is "
+                            f"**{cloud_provider}** — ready for TechZone provisioning."
+                        )
+                        if st.session_state.get("techzone_result"):
+                            result = st.session_state["techzone_result"]
+                            if result["success"]:
+                                st.success(f"✅ TechZone request submitted — ID: `{result['request_id']}` · Status: **{result['status']}**")
+                                with st.expander("📋 Full response", expanded=False):
+                                    st.json(result.get("raw", {}))
+                            else:
+                                st.error(f"❌ TechZone request failed: {result['error']}")
+                            if st.button("🔄 Submit another request", use_container_width=False):
+                                st.session_state.pop("techzone_result", None)
+                                st.session_state.pop("show_techzone_form", None)
+                                st.rerun()
+                        else:
+                            col_tz, _ = st.columns([1, 2])
+                            with col_tz:
+                                if st.button(
+                                    "🚀 Request TechZone environment",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["show_techzone_form"] = True
+
+                            if st.session_state.get("show_techzone_form"):
+                                with st.form("techzone_request_form"):
+                                    st.markdown("**TechZone Request Details**")
+                                    tz_purpose = st.selectbox(
+                                        "Purpose",
+                                        ["Demo", "Education", "Test", "Pilot"],
+                                        index=2,
+                                    )
+                                    tz_notes = st.text_area(
+                                        "Additional notes",
+                                        placeholder="Any specific requirements or context…",
+                                        height=80,
+                                    )
+                                    submitted = st.form_submit_button("✅ Submit to TechZone", type="primary")
+                                    if submitted:
+                                        with st.spinner("Submitting TechZone request…"):
+                                            result = request_techzone_env(
+                                                data.get("deployment_env", {}),
+                                                tz_purpose,
+                                                tz_notes,
+                                            )
+                                        st.session_state["techzone_result"] = result
+                                        st.session_state["show_techzone_form"] = False
+                                        st.rerun()
 
             st.divider()
+
+        # Display extracted fields in 2-column grid layout
+        col1, col2 = st.columns(2)
         
-        # Display extracted fields in expander cards
-        with st.expander("👥 Stakeholders", expanded=True):
-            if data.get("stakeholders"):
-                for s in data["stakeholders"]:
-                    st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
-            else:
-                st.info("No stakeholders identified")
+        with col1:
+            with st.expander("👥 Stakeholders", expanded=False):
+                if data.get("stakeholders"):
+                    for s in data["stakeholders"]:
+                        st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
+                else:
+                    st.info("No stakeholders identified")
+
+            with st.expander("🎯 Use Cases", expanded=False):
+                if data.get("use_cases"):
+                    for uc in data["use_cases"]:
+                        st.markdown(f"**{uc.get('title', 'Untitled')}**")
+                        st.markdown(f"_{uc.get('description', 'No description')}_")
+                        st.markdown("---")
+                else:
+                    st.info("No use cases identified")
+
+            with st.expander("🔗 Integrations", expanded=False):
+                if data.get("integrations"):
+                    for integ in data["integrations"]:
+                        st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
+                else:
+                    st.info("No integrations identified")
         
-        with st.expander("🎯 Use Cases", expanded=True):
-            if data.get("use_cases"):
-                for uc in data["use_cases"]:
-                    st.markdown(f"**{uc.get('title', 'Untitled')}**")
-                    st.markdown(f"_{uc.get('description', 'No description')}_")
-                    st.markdown("---")
-            else:
-                st.info("No use cases identified")
-        
-        with st.expander("🔗 Integrations", expanded=False):
-            if data.get("integrations"):
-                for integ in data["integrations"]:
-                    st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
-            else:
-                st.info("No integrations identified")
-        
-        with st.expander("☁️ Deployment Environment", expanded=False):
-            env = data.get("deployment_env", {})
-            st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
-            st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
-            if env.get("constraints"):
-                st.markdown(f"**Constraints:** {env.get('constraints')}")
-        
-        with st.expander("✅ Success Criteria", expanded=False):
-            if data.get("success_criteria"):
-                for sc in data["success_criteria"]:
-                    st.markdown(f"- {sc}")
-            else:
-                st.warning("No success criteria defined")
-        
-        with st.expander("⚠️ Risks", expanded=False):
-            if data.get("risks"):
-                for risk in data["risks"]:
-                    severity = risk.get("severity", "Unknown")
-                    emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                    st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
-            else:
-                st.info("No risks identified")
-        
-        with st.expander("📋 Action Items", expanded=False):
-            if data.get("action_items"):
-                for ai in data["action_items"]:
-                    owner = ai.get("owner", "Unassigned")
-                    task = ai.get("task", "No task description")
-                    due = ai.get("due", "TBD")
-                    st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
-            else:
-                st.info("No action items identified")
-        
+        with col2:
+            with st.expander("☁️ Deployment Environment", expanded=False):
+                env = data.get("deployment_env", {})
+                st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
+                st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
+                if env.get("constraints"):
+                    st.markdown(f"**Constraints:** {env.get('constraints')}")
+
+            with st.expander("✅ Success Criteria", expanded=False):
+                if data.get("success_criteria"):
+                    for sc in data["success_criteria"]:
+                        st.markdown(f"- {sc}")
+                else:
+                    st.warning("No success criteria defined")
+
+            with st.expander("⚠️ Risks", expanded=False):
+                if data.get("risks"):
+                    for risk in data["risks"]:
+                        severity = risk.get("severity", "Unknown")
+                        emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                        st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
+                else:
+                    st.info("No risks identified")
+
+            with st.expander("📋 Action Items", expanded=False):
+                if data.get("action_items"):
+                    for ai in data["action_items"]:
+                        owner = ai.get("owner", "Unassigned")
+                        task = ai.get("task", "No task description")
+                        due = ai.get("due", "TBD")
+                        st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
+                else:
+                    st.info("No action items identified")
+
         # Download JSON report (only shown before artifacts are generated)
         if not st.session_state.get("confirmed"):
             st.divider()
@@ -1041,6 +1113,397 @@ def main():
                 file_name="discovery_extraction.json",
                 mime="application/json",
             )
+
+
+def render_demo_tab():
+    """Render a static pre-baked demo walkthrough with hardcoded data — no LLM calls."""
+    st.subheader("🎬 Demo Walkthrough")
+    st.info("👀 This is a pre-baked demo showing the complete PoC analysis flow with instant results (no API calls).")
+    
+    st.divider()
+    
+    # Display sample transcript
+    st.markdown("### 📝 Sample Meeting Notes")
+    with st.expander("View meeting transcript", expanded=False):
+        st.text(SAMPLE_TRANSCRIPT)
+    
+    st.divider()
+    
+    # Hardcoded extraction data
+    demo_extraction = {
+        "stakeholders": [
+            {"name": "Sarah Chen", "role": "VP Digital Transformation", "organization": "Nexus Financial"},
+            {"name": "Marcus Rowe", "role": "Enterprise Architect", "organization": "Nexus Financial"},
+            {"name": "Priya Nair", "role": "IBM Client Engineer", "organization": "IBM"},
+            {"name": "Tom Walsh", "role": "IBM Account Executive", "organization": "IBM"}
+        ],
+        "use_cases": [
+            {
+                "title": "HR Onboarding Assistant",
+                "description": "Answer new-hire questions about benefits, policies, and IT setup. Integrate with Workday for employee data and SAP SuccessFactors for policy documents. Target: reduce onboarding time from 3-4 weeks to under 5 days."
+            },
+            {
+                "title": "Employee Helpdesk Chatbot",
+                "description": "Handle IT and HR tier-1 tickets, route complex issues to ServiceNow. Goal: reduce helpdesk call volume by 40%."
+            }
+        ],
+        "integrations": [
+            {"system": "Workday", "purpose": "Employee data retrieval for onboarding"},
+            {"system": "SAP SuccessFactors", "purpose": "Policy document access"},
+            {"system": "ServiceNow", "purpose": "Ticket routing for complex issues"},
+            {"system": "Azure Active Directory", "purpose": "SSO authentication"}
+        ],
+        "deployment_env": {
+            "cloud_provider": "Azure",
+            "region": "West Europe",
+            "constraints": "GDPR compliance required. All PII must stay in EU. Data residency guarantees needed."
+        },
+        "success_criteria": [
+            "Onboarding assistant answers 80% of new-hire questions without human escalation",
+            "Helpdesk chatbot deflects 40% of tier-1 tickets",
+            "PoC delivered and demoed within 8 weeks"
+        ],
+        "risks": [
+            {"risk": "GDPR data residency — all data must remain in EU", "severity": "High"},
+            {"risk": "Azure AD integration complexity with conditional access policies", "severity": "Medium"},
+            {"risk": "SAP SuccessFactors API rate limits may affect document retrieval", "severity": "Medium"},
+            {"risk": "Previous AI vendor failure — leadership needs measurable ROI within 90 days", "severity": "High"}
+        ],
+        "action_items": [
+            {"owner": "Priya Nair", "task": "Send watsonx.ai architecture proposal", "due": "July 22"},
+            {"owner": "Marcus Rowe", "task": "Share Azure AD tenant details and SAP API credentials", "due": "July 19"},
+            {"owner": "Sarah Chen", "task": "Confirm executive sponsor for PoC kickoff meeting", "due": "TBD"},
+            {"owner": "Tom Walsh", "task": "Arrange TechZone environment provisioning on IBM Cloud, Frankfurt region", "due": "TBD"}
+        ]
+    }
+    
+    # Hardcoded readiness score
+    demo_score = 87
+    demo_breakdown = [
+        {"item": "SAP Integration detected but no mitigation plan", "points": -5, "category": "Unmitigated Risk", "severity": "Medium"},
+        {"item": "Azure AD integration complexity mentioned", "points": -5, "category": "Unmitigated Risk", "severity": "Medium"},
+        {"item": "GDPR compliance risk flagged", "points": -3, "category": "Unmitigated Risk", "severity": "High"}
+    ]
+    demo_detected_risks = {
+        "GDPR Compliance": ["gdpr", "data residency", "personal data"],
+        "SAP Integration": ["sap"],
+        "SSO/Identity Integration": ["azure ad", "azure active directory", "sso"]
+    }
+    
+    # Hardcoded gap check
+    demo_gaps = {
+        "gaps": [
+            {
+                "field": "SSO/IdP Details",
+                "issue": "Azure AD mentioned but no details on conditional access policies or MFA requirements",
+                "question": "What specific Azure AD conditional access policies are in place? Is MFA required for all users?"
+            },
+            {
+                "field": "SAP SuccessFactors API",
+                "issue": "API rate limits mentioned as a risk but no current usage metrics provided",
+                "question": "What are the current API rate limits for SAP SuccessFactors? How many documents need to be accessed per day?"
+            }
+        ],
+        "readiness": "Ready",
+        "summary": "Minor clarifications needed but PoC can proceed with current information"
+    }
+    
+    # Display readiness score
+    st.markdown("### 📊 PoC Readiness Score")
+    st.success(f"**Score: {demo_score}/100** — Ready to proceed")
+    st.progress(demo_score / 100)
+    
+    with st.expander("📉 Score breakdown", expanded=False):
+        st.markdown("**Point deductions:**")
+        for item in demo_breakdown:
+            severity_emoji = "🔴" if item["severity"] == "High" else "🟡" if item["severity"] == "Medium" else "🟢"
+            st.markdown(f"- {severity_emoji}{item['item']}: **{item['points']} points**")
+    
+    with st.expander(f"⚠️ Detected risks ({len(demo_detected_risks)} categories)", expanded=False):
+        st.markdown("**Risk triggers found in meeting notes:**")
+        for risk_category, keywords in demo_detected_risks.items():
+            severity = get_risk_severity(risk_category)
+            severity_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+            st.markdown(f"{severity_emoji} **{risk_category}** ({severity})")
+            st.markdown(f"  - Keywords: {', '.join(keywords)}")
+    
+    st.divider()
+    
+    # Display gap check
+    st.success(f"✅ **PoC Readiness:** {demo_gaps['readiness']} — {demo_gaps['summary']}")
+    
+    if demo_gaps["gaps"]:
+        with st.expander("🔍 Missing or unclear information", expanded=False):
+            st.markdown("**The following items need clarification before proceeding:**")
+            for gap in demo_gaps["gaps"]:
+                st.markdown(f"- **{gap['field']}:** {gap['issue']}")
+                st.markdown(f"  - ❓ _{gap['question']}_")
+    
+    st.divider()
+    
+    # Display extracted data in columns
+    st.markdown("### 📋 Extracted Information")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        with st.expander("👥 Stakeholders", expanded=False):
+            for s in demo_extraction["stakeholders"]:
+                st.markdown(f"**{s['name']}** — {s['role']} at {s['organization']}")
+        
+        with st.expander("🎯 Use Cases", expanded=False):
+            for uc in demo_extraction["use_cases"]:
+                st.markdown(f"**{uc['title']}**")
+                st.markdown(f"_{uc['description']}_")
+                st.markdown("---")
+        
+        with st.expander("🔗 Integrations", expanded=False):
+            for integ in demo_extraction["integrations"]:
+                st.markdown(f"**{integ['system']}** — {integ['purpose']}")
+    
+    with col2:
+        with st.expander("☁️ Deployment Environment", expanded=False):
+            env = demo_extraction["deployment_env"]
+            st.markdown(f"**Cloud Provider:** {env['cloud_provider']}")
+            st.markdown(f"**Region:** {env['region']}")
+            st.markdown(f"**Constraints:** {env['constraints']}")
+        
+        with st.expander("✅ Success Criteria", expanded=False):
+            for sc in demo_extraction["success_criteria"]:
+                st.markdown(f"- {sc}")
+        
+        with st.expander("⚠️ Risks", expanded=False):
+            for risk in demo_extraction["risks"]:
+                severity = risk["severity"]
+                emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                st.markdown(f"{emoji} **{severity}:** {risk['risk']}")
+        
+        with st.expander("📋 Action Items", expanded=False):
+            for ai in demo_extraction["action_items"]:
+                st.markdown(f"- [ ] **{ai['owner']}** — {ai['task']} *(Due: {ai['due']})*")
+    
+    st.divider()
+    
+    # Hardcoded artifact previews
+    st.markdown("### 📄 Generated PoC Artifacts (Preview)")
+    
+    demo_placemat = """# IBM watsonx Discovery PoC — Nexus Financial
+
+## Executive Summary
+Nexus Financial is implementing AI-powered HR automation to reduce onboarding time from 3-4 weeks to under 5 days and deflect 40% of tier-1 helpdesk tickets.
+
+## Stakeholders
+- **Sarah Chen** — VP Digital Transformation, Nexus Financial
+- **Marcus Rowe** — Enterprise Architect, Nexus Financial
+- **Priya Nair** — IBM Client Engineer
+- **Tom Walsh** — IBM Account Executive
+
+## Business Objectives
+Automate HR onboarding and employee support across 4,000 employees in Europe and North America.
+
+## Use Cases
+1. **HR Onboarding Assistant** — Answer new-hire questions about benefits, policies, and IT setup
+2. **Employee Helpdesk Chatbot** — Handle IT and HR tier-1 tickets, route complex issues to ServiceNow
+
+## Technical Architecture
+- **Deployment:** Azure West Europe (GDPR compliant)
+- **Integrations:** Workday, SAP SuccessFactors, ServiceNow, Azure AD
+- **Authentication:** Azure Active Directory SSO
+
+## Success Criteria
+- 80% of new-hire questions answered without escalation
+- 40% deflection of tier-1 tickets
+- PoC delivered within 8 weeks
+
+## Risks & Mitigation
+- **High:** GDPR data residency → Deploy in EU region only
+- **High:** Previous vendor failure → Weekly progress demos with measurable KPIs
+- **Medium:** Azure AD complexity → Early integration testing
+- **Medium:** SAP API rate limits → Implement caching strategy
+
+## Next Steps
+- Priya: Architecture proposal by July 22
+- Marcus: Azure AD credentials by July 19
+- Sarah: Confirm executive sponsor
+- Tom: Provision TechZone environment (Frankfurt)
+"""
+    
+    demo_checklist = """# watsonx PoC Checklist
+
+## Pre-PoC Setup
+- [ ] Stakeholder kickoff meeting scheduled
+- [ ] Azure West Europe environment provisioned
+- [ ] Azure AD SSO configured
+- [ ] Workday API access obtained
+- [ ] SAP SuccessFactors API credentials received
+- [ ] ServiceNow integration endpoint configured
+
+## Technical Requirements
+- [ ] GDPR compliance review completed
+- [ ] Data residency verification (EU only)
+- [ ] Azure AD conditional access policies documented
+- [ ] SAP API rate limit testing completed
+
+## Use Case Implementation
+- [ ] HR Onboarding Assistant prototype deployed
+- [ ] Workday integration tested
+- [ ] SAP SuccessFactors document retrieval working
+- [ ] Employee Helpdesk Chatbot prototype deployed
+- [ ] ServiceNow ticket routing configured
+
+## Testing & Validation
+- [ ] 80% question deflection rate validated
+- [ ] 40% ticket deflection rate validated
+- [ ] 8-week delivery timeline on track
+
+## Risk Mitigation
+- [ ] GDPR compliance audit passed
+- [ ] Azure AD integration tested with conditional access
+- [ ] SAP API caching implemented
+- [ ] Weekly progress demos scheduled
+
+## Documentation & Handoff
+- [ ] Architecture documentation complete
+- [ ] User guide created
+- [ ] Handoff meeting scheduled
+"""
+    
+    demo_architecture = """# Technical Architecture Summary
+
+## Deployment Environment
+- **Cloud Provider:** Azure
+- **Region:** West Europe
+- **Constraints:** GDPR compliance, EU data residency required
+
+## Core Components
+- watsonx.ai foundation models (LLM for conversational AI)
+- watsonx.data (vector database for document retrieval)
+- watsonx Assistant (orchestration layer)
+
+## Integration Points
+- **Workday:** Employee data retrieval via REST API
+- **SAP SuccessFactors:** Policy document access via OData API
+- **ServiceNow:** Ticket creation and routing via REST API
+- **Azure AD:** SSO authentication via SAML 2.0
+
+## Authentication & Security
+- Azure Active Directory SSO with conditional access policies
+- All data encrypted in transit (TLS 1.3) and at rest (AES-256)
+- GDPR-compliant data handling with EU residency guarantees
+
+## Data Flow
+1. User authenticates via Azure AD
+2. Query sent to watsonx Assistant
+3. Assistant retrieves context from Workday/SAP via APIs
+4. LLM generates response using retrieved context
+5. Complex queries routed to ServiceNow for human handling
+
+## Scalability Considerations
+- Horizontal scaling for 4,000 concurrent users
+- API rate limit management with caching layer
+- Load balancing across Azure availability zones
+"""
+    
+    demo_email = """Subject: watsonx Discovery PoC — Next Steps for Nexus Financial
+
+Hi Sarah, Marcus,
+
+Thank you for the productive discovery call on July 14. We're excited to partner with Nexus Financial on this AI-powered HR automation initiative.
+
+**Key Takeaways:**
+- Two primary use cases: HR Onboarding Assistant and Employee Helpdesk Chatbot
+- Target: Reduce onboarding from 3-4 weeks to under 5 days
+- Goal: Deflect 40% of tier-1 helpdesk tickets
+- Deployment: Azure West Europe with GDPR compliance
+
+**Next Steps:**
+- Priya will send the watsonx.ai architecture proposal by July 22
+- Marcus to share Azure AD tenant details and SAP API credentials by July 19
+- Sarah to confirm executive sponsor for kickoff meeting
+- Tom will arrange TechZone environment provisioning in Frankfurt
+
+**Timeline:**
+We're targeting an 8-week PoC delivery with weekly progress demos to ensure measurable ROI.
+
+Looking forward to kicking off this engagement!
+
+Best regards,
+Priya Nair
+IBM Client Engineer
+"""
+    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📋 IBM Placemat",
+        "✅ PoC Checklist",
+        "🏗️ Architecture",
+        "📧 Kickoff Email"
+    ])
+    
+    with tab1:
+        st.markdown(demo_placemat)
+    
+    with tab2:
+        st.markdown(demo_checklist)
+    
+    with tab3:
+        st.markdown(demo_architecture)
+    
+    with tab4:
+        st.markdown(demo_email)
+    
+    st.divider()
+    st.info("💡 **This is a static demo.** Switch to the 'PoC Analyzer' tab to analyze your own meeting notes with live watsonx API calls.")
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    st.set_page_config(
+        page_title="Meeting Notes Analyzer",
+        page_icon="🎙️",
+        layout="wide",
+    )
+
+    st.title("🎙️ Meeting Notes Analyzer")
+
+    if not check_env():
+        st.stop()
+
+    # Sidebar: Model selector and readiness score
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        selected_model = st.selectbox(
+            "🤖 Model",
+            options=SUPPORTED_MODELS,
+            index=SUPPORTED_MODELS.index(DEFAULT_MODEL),
+            help="Select a watsonx text-generation model",
+        )
+        st.caption(f"Powered by IBM watsonx")
+        st.caption(f"`{selected_model}`")
+        
+        # Display readiness score if available (analyzer tab only)
+        if "readiness_score" in st.session_state and "extracted_data" in st.session_state:
+            st.divider()
+            st.header("📊 Readiness")
+            score = st.session_state["readiness_score"]["score"]
+            if score >= 80:
+                st.success(f"**{score}/100**")
+                st.caption("✅ Ready to proceed")
+            elif score >= 60:
+                st.warning(f"**{score}/100**")
+                st.caption("⚠️ Needs clarification")
+            else:
+                st.error(f"**{score}/100**")
+                st.caption("🚫 Significant gaps")
+            st.progress(score / 100)
+
+    analyzer_tab, demo_tab = st.tabs(["🔬 PoC Analyzer", "🎬 Demo"])
+
+    with analyzer_tab:
+        render_analyzer_tab(selected_model)
+
+    with demo_tab:
+        render_demo_tab()
 
 
 if __name__ == "__main__":
