@@ -584,6 +584,100 @@ Action items:
 - Tom to arrange TechZone environment provisioning on IBM Cloud, Frankfurt region
 """
 
+# ── TechZone MCP integration ──────────────────────────────────────────────────
+
+TECHZONE_MCP_URL = os.getenv(
+    "TECHZONE_MCP_URL",
+    "https://mcp.techzone.ibm.com/servers/c7442b81221647c3b36c75df4f2f88e8/mcp",
+)
+
+
+def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict:
+    """
+    Submit a TechZone environment request via the TechZone MCP HTTP endpoint.
+
+    Uses JSON-RPC 2.0 over streamable-http transport.
+    Returns a dict with keys: success (bool), request_id (str), status (str), error (str).
+    """
+    import httpx
+    from datetime import datetime, timezone
+
+    api_key = os.getenv("TECHZONE_API_KEY", "")
+    if not api_key:
+        return {"success": False, "error": "TECHZONE_API_KEY not set"}
+
+    # Derive geography from region string (best-effort)
+    region = (deployment_env.get("region") or "").lower()
+    if any(k in region for k in ("europe", "eu", "frankfurt", "london", "amsterdam")):
+        geography = "europe"
+    elif any(k in region for k in ("asia", "japan", "tokyo", "sydney", "singapore")):
+        geography = "asia"
+    else:
+        geography = "americas"
+
+    start_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "request-mcp-techzone-create-request",
+            "arguments": {
+                "platformId": deployment_env.get("cloud_provider", "ibmcloud"),
+                "start": start_utc,
+                "bearerToken": api_key,
+                "purpose": purpose,
+                "geography": geography,
+            },
+        },
+    }
+
+    try:
+        response = httpx.post(
+            TECHZONE_MCP_URL,
+            json=payload,
+            headers={
+                "TechZone-Token": api_key,
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract result from JSON-RPC envelope
+        result = data.get("result", {})
+        content = result.get("content", [{}])
+        text = content[0].get("text", "") if content else str(result)
+
+        # Try to parse the inner result text as JSON
+        try:
+            inner = json.loads(text) if text else {}
+        except (json.JSONDecodeError, TypeError):
+            inner = {"raw": text}
+
+        request_id = (
+            inner.get("id")
+            or inner.get("requestId")
+            or inner.get("_id")
+            or "—"
+        )
+        status = inner.get("status") or inner.get("state") or "Submitted"
+
+        return {
+            "success": True,
+            "request_id": str(request_id),
+            "status": str(status),
+            "raw": inner,
+        }
+
+    except httpx.HTTPStatusError as e:
+        return {"success": False, "error": f"HTTP {e.response.status_code}: {e.response.text[:300]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ── UI helpers ────────────────────────────────────────────────────────────────
 
 def check_env() -> bool:
@@ -613,31 +707,30 @@ def render_analyzer_tab(selected_model: str):
     st.divider()
 
     # ── input section ─────────────────────────────────────────────────────────
-    input_method = st.radio(
-        "Input method",
-        ["✏️ Paste text", "📎 Upload file"],
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-
-    notes_text = ""
-
-    if input_method == "✏️ Paste text":
-        # Sample transcript pre-fill
-        col_pre, _ = st.columns([1, 3])
-        with col_pre:
-            if st.button("📋 Load sample transcript", help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
+    col_method, col_sample = st.columns([2, 1])
+    with col_method:
+        input_method = st.radio(
+            "Input method",
+            ["✏️ Paste text", "📎 Upload file"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with col_sample:
+        if input_method == "✏️ Paste text":
+            if st.button("📋 Load sample", use_container_width=True, help="Pre-fill with an Azure / GDPR / SAP / HR-onboarding scenario"):
                 st.session_state["sample_loaded"] = True
-                # Clear any previous analysis when loading sample
                 for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
                     st.session_state.pop(key, None)
                 st.rerun()
 
+    notes_text = ""
+
+    if input_method == "✏️ Paste text":
         default_text = SAMPLE_TRANSCRIPT if st.session_state.get("sample_loaded") else ""
         notes_text = st.text_area(
             "Paste your meeting notes here",
             value=default_text,
-            height=280,
+            height=180,
             placeholder="e.g. Attendees: Alice, Bob, Carol\n\nAlice presented Q3 results...",
         )
 
@@ -724,64 +817,23 @@ def render_analyzer_tab(selected_model: str):
         st.divider()
         data = st.session_state["extracted_data"]
 
-        # Readiness score details (score badge is now in sidebar)
+        # ── Inline banners (score + readiness) ───────────────────────────────
+        score = None
         if "readiness_score" in st.session_state:
             score_data = st.session_state["readiness_score"]
             score = score_data["score"]
-            breakdown = score_data["breakdown"]
-            detected_risks = score_data["detected_risks"]
+            if score >= 80:
+                st.success(f"**Score: {score}/100** — Ready to proceed")
+            elif score >= 60:
+                st.warning(f"**Score: {score}/100** — Needs some clarification")
+            else:
+                st.error(f"**Score: {score}/100** — Significant gaps to address")
+            st.progress(score / 100)
 
-            # Breakdown table
-            if breakdown:
-                with st.expander("📉 Score breakdown — what reduced the score", expanded=False):
-                    st.markdown("**Point deductions:**")
-
-                    # Group by category
-                    categories = {}
-                    for item in breakdown:
-                        cat = item.get("category", "Other")
-                        if cat not in categories:
-                            categories[cat] = []
-                        categories[cat].append(item)
-
-                    # Display by category
-                    for category, items in categories.items():
-                        st.markdown(f"**{category}:**")
-                        for item in items:
-                            points = item["points"]
-                            description = item["item"]
-                            severity = item.get("severity", "")
-                            severity_emoji = ""
-                            if severity == "High":
-                                severity_emoji = "🔴 "
-                            elif severity == "Medium":
-                                severity_emoji = "🟡 "
-                            elif severity == "Low":
-                                severity_emoji = "🟢 "
-
-                            st.markdown(f"- {severity_emoji}{description}: **{points} points**")
-                        st.markdown("")
-
-            # Display detected risks
-            if detected_risks:
-                with st.expander(f"⚠️ Detected risks ({len(detected_risks)} categories)", expanded=False):
-                    st.markdown("**Risk triggers found in meeting notes:**")
-                    for risk_category, keywords in detected_risks.items():
-                        severity = get_risk_severity(risk_category)
-                        severity_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                        st.markdown(f"{severity_emoji} **{risk_category}** ({severity})")
-                        st.markdown(f"  - Keywords: {', '.join(keywords[:5])}")
-
-            st.divider()
-
-        # Display gap check results
         if "gap_check" in st.session_state:
             gap_data = st.session_state["gap_check"]
             readiness = gap_data.get("readiness", "Needs clarification")
             summary = gap_data.get("summary", "")
-            gaps = gap_data.get("gaps", [])
-
-            # Show readiness banner
             if readiness == "Ready":
                 st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
             elif readiness == "Blocked":
@@ -789,30 +841,59 @@ def render_analyzer_tab(selected_model: str):
             else:
                 st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
 
-            # Show gaps if any
-            if gaps:
-                with st.expander("🔍 Missing or unclear information", expanded=False):
-                    st.markdown("**The following items need clarification before proceeding:**")
-                    for gap in gaps:
-                        field = gap.get("field", "Unknown field")
-                        issue = gap.get("issue", "")
-                        question = gap.get("question", "")
-                        st.markdown(f"- **{field}:** {issue}")
-                        if question:
-                            st.markdown(f"  - ❓ _{question}_")
-                    st.divider()
-                    st.markdown("_Review the extracted data below and update your notes if needed, then re-analyze._")
+        # ── Single collapsed expander for all details ─────────────────────────
+        has_details = (
+            "readiness_score" in st.session_state or "gap_check" in st.session_state
+        )
+        if has_details:
+            with st.expander("🔍 Analysis details — score breakdown, risks & gaps", expanded=False):
+                if "readiness_score" in st.session_state:
+                    score_data = st.session_state["readiness_score"]
+                    breakdown = score_data["breakdown"]
+                    detected_risks = score_data["detected_risks"]
 
-            # Confirmation button (only show if not already confirmed)
-            if "confirmed" not in st.session_state:
-                st.divider()
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
-                        st.session_state["confirmed"] = True
-                        st.rerun()
-                st.info("👆 Review the extraction above, then confirm to proceed with artifact generation.")
-                st.divider()
+                    if breakdown:
+                        st.markdown("**📉 Score deductions:**")
+                        categories: dict = {}
+                        for item in breakdown:
+                            cat = item.get("category", "Other")
+                            categories.setdefault(cat, []).append(item)
+                        for category, items in categories.items():
+                            st.markdown(f"*{category}:*")
+                            for item in items:
+                                sev = item.get("severity", "")
+                                sev_emoji = "🔴 " if sev == "High" else "🟡 " if sev == "Medium" else "🟢 " if sev == "Low" else ""
+                                st.markdown(f"- {sev_emoji}{item['item']}: **{item['points']} pts**")
+
+                    if detected_risks:
+                        st.markdown("---")
+                        st.markdown(f"**⚠️ Risk triggers ({len(detected_risks)} categories):**")
+                        for risk_category, keywords in detected_risks.items():
+                            severity = get_risk_severity(risk_category)
+                            sev_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                            st.markdown(f"{sev_emoji} **{risk_category}** — {', '.join(keywords[:5])}")
+
+                if "gap_check" in st.session_state:
+                    gaps = st.session_state["gap_check"].get("gaps", [])
+                    if gaps:
+                        st.markdown("---")
+                        st.markdown("**🔍 Gaps & clarification questions:**")
+                        for gap in gaps:
+                            st.markdown(f"- **{gap.get('field', '')}:** {gap.get('issue', '')}")
+                            if gap.get("question"):
+                                st.markdown(f"  - ❓ _{gap['question']}_")
+                        st.caption("Update your notes to address gaps, then re-analyse.")
+
+        # ── Confirm button ────────────────────────────────────────────────────
+        if "gap_check" in st.session_state and "confirmed" not in st.session_state:
+            st.divider()
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
+                    st.session_state["confirmed"] = True
+                    st.rerun()
+            st.info("👆 Review details above, then confirm to generate artifacts.")
+            st.divider()
 
         # Generate and display artifacts (only after confirmation)
         if st.session_state.get("confirmed"):
@@ -901,46 +982,64 @@ def render_analyzer_tab(selected_model: str):
                 if score >= 70 and cloud_provider not in ("Unknown", "", None):
                     st.divider()
                     st.subheader("☁️ TechZone Environment")
-                    st.info(
-                        f"PoC readiness score is **{score}/100** and deployment environment is "
-                        f"**{cloud_provider}** — this engagement is ready for a TechZone provisioning request."
-                    )
-                    col_tz, _ = st.columns([1, 2])
-                    with col_tz:
-                        if st.button(
-                            "🚀 Request TechZone environment",
-                            type="primary",
-                            use_container_width=True,
-                            help="Opens the TechZone request form — no auto-submission",
-                        ):
-                            st.session_state["show_techzone_form"] = True
 
-                    if st.session_state.get("show_techzone_form"):
-                        with st.form("techzone_request_form"):
-                            st.markdown("**TechZone Request Details**")
-                            tz_purpose = st.selectbox(
-                                "Purpose",
-                                ["Demo", "Education", "Test", "Pilot"],
-                                index=2,
-                            )
-                            tz_notes = st.text_area(
-                                "Additional notes",
-                                placeholder="Any specific requirements or context for the TechZone team…",
-                                height=100,
-                            )
-                            submitted = st.form_submit_button("✅ Confirm request", type="primary")
-                            if submitted:
-                                st.success(
-                                    "✅ TechZone request details captured. "
-                                    "Hand these off to your TechZone admin to complete provisioning."
-                                )
-                                st.json({
-                                    "deployment_env": data.get("deployment_env", {}),
-                                    "purpose": tz_purpose,
-                                    "readiness_score": score,
-                                    "notes": tz_notes,
-                                })
-                                st.session_state["show_techzone_form"] = False
+                    techzone_key = os.getenv("TECHZONE_API_KEY", "")
+                    if not techzone_key:
+                        st.info(
+                            "PoC readiness score is **{}/100** — set `TECHZONE_API_KEY` in `.env` "
+                            "to enable live TechZone provisioning.".format(score)
+                        )
+                    else:
+                        st.info(
+                            f"PoC readiness score is **{score}/100** and deployment environment is "
+                            f"**{cloud_provider}** — ready for TechZone provisioning."
+                        )
+                        if st.session_state.get("techzone_result"):
+                            result = st.session_state["techzone_result"]
+                            if result["success"]:
+                                st.success(f"✅ TechZone request submitted — ID: `{result['request_id']}` · Status: **{result['status']}**")
+                                with st.expander("📋 Full response", expanded=False):
+                                    st.json(result.get("raw", {}))
+                            else:
+                                st.error(f"❌ TechZone request failed: {result['error']}")
+                            if st.button("🔄 Submit another request", use_container_width=False):
+                                st.session_state.pop("techzone_result", None)
+                                st.session_state.pop("show_techzone_form", None)
+                                st.rerun()
+                        else:
+                            col_tz, _ = st.columns([1, 2])
+                            with col_tz:
+                                if st.button(
+                                    "🚀 Request TechZone environment",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["show_techzone_form"] = True
+
+                            if st.session_state.get("show_techzone_form"):
+                                with st.form("techzone_request_form"):
+                                    st.markdown("**TechZone Request Details**")
+                                    tz_purpose = st.selectbox(
+                                        "Purpose",
+                                        ["Demo", "Education", "Test", "Pilot"],
+                                        index=2,
+                                    )
+                                    tz_notes = st.text_area(
+                                        "Additional notes",
+                                        placeholder="Any specific requirements or context…",
+                                        height=80,
+                                    )
+                                    submitted = st.form_submit_button("✅ Submit to TechZone", type="primary")
+                                    if submitted:
+                                        with st.spinner("Submitting TechZone request…"):
+                                            result = request_techzone_env(
+                                                data.get("deployment_env", {}),
+                                                tz_purpose,
+                                                tz_notes,
+                                            )
+                                        st.session_state["techzone_result"] = result
+                                        st.session_state["show_techzone_form"] = False
+                                        st.rerun()
 
             st.divider()
 
