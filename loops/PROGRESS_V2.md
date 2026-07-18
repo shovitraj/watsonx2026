@@ -46,3 +46,21 @@ _Each iteration appends one entry here._
 **Next task:** Phase 7.2 — Collapse all `st.expander` cards by default (`expanded=False`)
 
 ---
+
+## Iteration 3 — 2026-07-18
+
+**Task completed:** Phase 7.2 — Collapse all `st.expander` cards by default
+
+**Key decisions:**
+- Changed all `st.expander` widgets to `expanded=False` except for active result sections
+- Affected expanders: Score breakdown, Missing information, Stakeholders, Use Cases, Demo transcript
+- Keeps UI compact by default — users expand only what they need to see
+- Active results (readiness banner, score badge) remain visible inline
+
+**Files changed:**
+- `app.py` — Changed 5 expander `expanded` parameters from `True` to `False`
+- `loops/IMPLEMENTATION_PLAN_V2.md` — Marked Phase 7.2 as complete
+
+**Next task:** Phase 7.3 — Show extraction fields in 2-column grid layout using `st.columns`
+
+---

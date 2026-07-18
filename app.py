@@ -733,7 +733,7 @@ def render_analyzer_tab(selected_model: str):
 
             # Breakdown table
             if breakdown:
-                with st.expander("📉 Score breakdown — what reduced the score", expanded=True):
+                with st.expander("📉 Score breakdown — what reduced the score", expanded=False):
                     st.markdown("**Point deductions:**")
 
                     # Group by category
@@ -791,7 +791,7 @@ def render_analyzer_tab(selected_model: str):
 
             # Show gaps if any
             if gaps:
-                with st.expander("🔍 Missing or unclear information", expanded=True):
+                with st.expander("🔍 Missing or unclear information", expanded=False):
                     st.markdown("**The following items need clarification before proceeding:**")
                     for gap in gaps:
                         field = gap.get("field", "Unknown field")
@@ -945,14 +945,14 @@ def render_analyzer_tab(selected_model: str):
             st.divider()
 
         # Display extracted fields in expander cards
-        with st.expander("👥 Stakeholders", expanded=True):
+        with st.expander("👥 Stakeholders", expanded=False):
             if data.get("stakeholders"):
                 for s in data["stakeholders"]:
                     st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
             else:
                 st.info("No stakeholders identified")
 
-        with st.expander("🎯 Use Cases", expanded=True):
+        with st.expander("🎯 Use Cases", expanded=False):
             if data.get("use_cases"):
                 for uc in data["use_cases"]:
                     st.markdown(f"**{uc.get('title', 'Untitled')}**")
@@ -1021,7 +1021,7 @@ def render_demo_tab():
     
     # Display sample transcript
     st.markdown("### 📝 Sample Meeting Notes")
-    with st.expander("View meeting transcript", expanded=True):
+    with st.expander("View meeting transcript", expanded=False):
         st.text(SAMPLE_TRANSCRIPT)
     
     st.divider()
