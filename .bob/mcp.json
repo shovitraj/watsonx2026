@@ -1,5 +1,23 @@
 {
   "mcpServers": {
+    "discovery-poc": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/Users/bryanyang/Repos/watsonx2026/mcp_server.py"
+      ],
+      "env": {
+        "WATSONX_API_KEY": "${WATSONX_API_KEY}",
+        "WATSONX_PROJECT_ID": "${WATSONX_PROJECT_ID}",
+        "WATSONX_URL": "${WATSONX_URL}"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "analyze_notes",
+        "check_gaps",
+        "generate_artifacts"
+      ]
+    },
     "bob-marketplace": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:39247/mcp",
