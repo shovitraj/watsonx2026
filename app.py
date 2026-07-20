@@ -677,7 +677,7 @@ def request_techzone_env(
     start_utc = start_date or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     arguments: dict = {
-        "platformId": deployment_env.get("cloud_provider", "ibmcloud"),
+        "platformId": deployment_env.get("platform_id", "69caed724b629d96da28b7a3"),
         "start": start_utc,
         "bearerToken": api_key,
         "purpose": purpose,
@@ -765,12 +765,13 @@ def render_results(summary: str, actions: str):
         st.markdown(actions)
 
 
+def _not_ready_msg(label: str):
+    """Standard placeholder shown in tabs that require analysis to run first."""
+    st.info(f"📝 Run an analysis in the **🔬 Analyzer** tab first to see {label}.")
+
+
 def render_analyzer_tab(selected_model: str):
-    st.subheader("🔬 PoC Analyzer")
-
-    st.divider()
-
-    # ── input section ─────────────────────────────────────────────────────────
+    """Tab 1 — input + analyse button + score/gap banners + confirm gate."""
     col_method, col_sample = st.columns([2, 1])
     with col_method:
         input_method = st.radio(
@@ -797,7 +798,6 @@ def render_analyzer_tab(selected_model: str):
             height=180,
             placeholder="e.g. Attendees: Alice, Bob, Carol\n\nAlice presented Q3 results...",
         )
-
     else:
         uploaded = st.file_uploader(
             "Upload meeting notes",
@@ -814,11 +814,9 @@ def render_analyzer_tab(selected_model: str):
                     st.error(f"Could not read file: {e}")
                     st.stop()
 
-    # ── analyse button ────────────────────────────────────────────────────────
     st.divider()
     analyse_disabled = not notes_text.strip()
     if st.button("🔍 Analyse", type="primary", disabled=analyse_disabled, use_container_width=True):
-        # Reset all previous results when starting a new analysis
         for key in ("extracted_data", "gap_check", "readiness_score", "artifacts", "confirmed"):
             st.session_state.pop(key, None)
         with st.spinner("Extracting structured data from watsonx…"):
@@ -826,14 +824,11 @@ def render_analyzer_tab(selected_model: str):
                 raw_response = call_watsonx(
                     EXTRACTION_PROMPT.format(notes=notes_text),
                     model_id=selected_model,
-                    max_new_tokens=4000
+                    max_new_tokens=4000,
                 )
-
-                # Parse JSON response
                 try:
                     extracted_data = json.loads(_extract_json(raw_response))
                     st.session_state["extracted_data"] = extracted_data
-                    # Clear previous gap check and confirmation
                     st.session_state.pop("gap_check", None)
                     st.session_state.pop("confirmed", None)
                 except json.JSONDecodeError as je:
@@ -843,380 +838,324 @@ def render_analyzer_tab(selected_model: str):
                         f"**Raw response (first 500 chars):**\n```\n{raw_response[:500]}\n```"
                     )
                     st.stop()
-
             except Exception as e:
                 st.error(f"watsonx error: {e}")
                 st.stop()
 
-        # Run gap check immediately after extraction
         with st.spinner("Checking for gaps and missing information…"):
             try:
                 gap_data = check_gaps(st.session_state["extracted_data"], model_id=selected_model)
                 st.session_state["gap_check"] = gap_data
             except Exception as e:
                 st.warning(f"Gap check failed: {e}")
-                # Continue anyway with empty gap check
-                st.session_state["gap_check"] = {
-                    "gaps": [],
-                    "readiness": "Needs clarification",
-                    "summary": "Gap check unavailable"
-                }
+                st.session_state["gap_check"] = {"gaps": [], "readiness": "Needs clarification", "summary": "Gap check unavailable"}
 
-        # Calculate readiness score
         with st.spinner("Calculating readiness score…"):
             try:
                 score_data = calculate_readiness_score(st.session_state["extracted_data"], notes_text)
                 st.session_state["readiness_score"] = score_data
             except Exception as e:
                 st.warning(f"Readiness score calculation failed: {e}")
-                # Continue with default score
-                st.session_state["readiness_score"] = {
-                    "score": 50,
-                    "breakdown": [{"item": "Score calculation unavailable", "points": -50, "category": "Error"}],
-                    "detected_risks": {}
-                }
+                st.session_state["readiness_score"] = {"score": 50, "breakdown": [{"item": "Score calculation unavailable", "points": -50, "category": "Error"}], "detected_risks": {}}
 
-    # ── results ───────────────────────────────────────────────────────────────
-    if "extracted_data" in st.session_state:
-        st.divider()
-        data = st.session_state["extracted_data"]
+    if "extracted_data" not in st.session_state:
+        return
 
-        # ── Inline banners (score + readiness) ───────────────────────────────
-        score = None
-        if "readiness_score" in st.session_state:
-            score_data = st.session_state["readiness_score"]
-            score = score_data["score"]
-            if score >= 80:
-                st.success(f"**Score: {score}/100** — Ready to proceed")
-            elif score >= 60:
-                st.warning(f"**Score: {score}/100** — Needs some clarification")
-            else:
-                st.error(f"**Score: {score}/100** — Significant gaps to address")
-            st.progress(score / 100)
+    st.divider()
+    data = st.session_state["extracted_data"]
 
-        if "gap_check" in st.session_state:
-            gap_data = st.session_state["gap_check"]
-            readiness = gap_data.get("readiness", "Needs clarification")
-            summary = gap_data.get("summary", "")
-            if readiness == "Ready":
-                st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
-            elif readiness == "Blocked":
-                st.error(f"🚫 **PoC Readiness:** {readiness} — {summary}")
-            else:
-                st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
+    # Score + readiness banners
+    if "readiness_score" in st.session_state:
+        score_data = st.session_state["readiness_score"]
+        score = score_data["score"]
+        if score >= 80:
+            st.success(f"**Score: {score}/100** — Ready to proceed")
+        elif score >= 60:
+            st.warning(f"**Score: {score}/100** — Needs some clarification")
+        else:
+            st.error(f"**Score: {score}/100** — Significant gaps to address")
+        st.progress(score / 100)
 
-        # ── Single collapsed expander for all details ─────────────────────────
-        has_details = (
-            "readiness_score" in st.session_state or "gap_check" in st.session_state
-        )
-        if has_details:
-            with st.expander("🔍 Analysis details — score breakdown, risks & gaps", expanded=False):
-                if "readiness_score" in st.session_state:
-                    score_data = st.session_state["readiness_score"]
-                    breakdown = score_data["breakdown"]
-                    detected_risks = score_data["detected_risks"]
+    if "gap_check" in st.session_state:
+        gap_data = st.session_state["gap_check"]
+        readiness = gap_data.get("readiness", "Needs clarification")
+        summary = gap_data.get("summary", "")
+        if readiness == "Ready":
+            st.success(f"✅ **PoC Readiness:** {readiness} — {summary}")
+        elif readiness == "Blocked":
+            st.error(f"🚫 **PoC Readiness:** {readiness} — {summary}")
+        else:
+            st.warning(f"⚠️ **PoC Readiness:** {readiness} — {summary}")
 
-                    if breakdown:
-                        st.markdown("**📉 Score deductions:**")
-                        categories: dict = {}
-                        for item in breakdown:
-                            cat = item.get("category", "Other")
-                            categories.setdefault(cat, []).append(item)
-                        for category, items in categories.items():
-                            st.markdown(f"*{category}:*")
-                            for item in items:
-                                sev = item.get("severity", "")
-                                sev_emoji = "🔴 " if sev == "High" else "🟡 " if sev == "Medium" else "🟢 " if sev == "Low" else ""
-                                st.markdown(f"- {sev_emoji}{item['item']}: **{item['points']} pts**")
-
-                    if detected_risks:
-                        st.markdown("---")
-                        st.markdown(f"**⚠️ Risk triggers ({len(detected_risks)} categories):**")
-                        for risk_category, keywords in detected_risks.items():
-                            severity = get_risk_severity(risk_category)
-                            sev_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                            st.markdown(f"{sev_emoji} **{risk_category}** — {', '.join(keywords[:5])}")
-
-                if "gap_check" in st.session_state:
-                    gaps = st.session_state["gap_check"].get("gaps", [])
-                    if gaps:
-                        st.markdown("---")
-                        st.markdown("**🔍 Gaps & clarification questions:**")
-                        for gap in gaps:
-                            st.markdown(f"- **{gap.get('field', '')}:** {gap.get('issue', '')}")
-                            if gap.get("question"):
-                                st.markdown(f"  - ❓ _{gap['question']}_")
-                        st.caption("Update your notes to address gaps, then re-analyse.")
-
-        # ── Confirm button ────────────────────────────────────────────────────
-        if "gap_check" in st.session_state and "confirmed" not in st.session_state:
-            st.divider()
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("✅ Confirm and continue", type="primary", use_container_width=True):
-                    st.session_state["confirmed"] = True
-                    st.rerun()
-            st.info("👆 Review details above, then confirm to generate artifacts.")
-            st.divider()
-
-        # Generate and display artifacts (only after confirmation)
-        if st.session_state.get("confirmed"):
-            # Generate artifacts if not already generated
-            if "artifacts" not in st.session_state:
-                with st.spinner("Generating PoC artifacts from watsonx…"):
-                    try:
-                        artifacts = generate_artifacts(data, model_id=selected_model)
-                        st.session_state["artifacts"] = artifacts
-                    except Exception as e:
-                        st.error(f"Failed to generate artifacts: {e}")
-                        st.stop()
-
-            # Display artifacts in tabs
-            st.divider()
-            st.subheader("📄 Generated PoC Artifacts")
-
-            tab1, tab2, tab3, tab4 = st.tabs([
-                "📋 IBM Placemat",
-                "✅ PoC Checklist",
-                "🏗️ Architecture",
-                "📧 Kickoff Email"
-            ])
-
-            artifacts = st.session_state["artifacts"]
-
-            with tab1:
-                st.markdown(artifacts.get("placemat", "No placemat generated"))
-                st.download_button(
-                    "⬇️ Download Placemat (.md)",
-                    data=artifacts.get("placemat", ""),
-                    file_name="ibm_placemat.md",
-                    mime="text/markdown",
-                )
-
-            with tab2:
-                st.markdown(artifacts.get("checklist", "No checklist generated"))
-                st.download_button(
-                    "⬇️ Download Checklist (.md)",
-                    data=artifacts.get("checklist", ""),
-                    file_name="poc_checklist.md",
-                    mime="text/markdown",
-                )
-
-            with tab3:
-                st.markdown(artifacts.get("architecture", "No architecture generated"))
-                st.download_button(
-                    "⬇️ Download Architecture (.md)",
-                    data=artifacts.get("architecture", ""),
-                    file_name="architecture_summary.md",
-                    mime="text/markdown",
-                )
-
-            with tab4:
-                st.markdown(artifacts.get("email", "No email generated"))
-                st.download_button(
-                    "⬇️ Download Email (.txt)",
-                    data=artifacts.get("email", ""),
-                    file_name="kickoff_email.txt",
-                    mime="text/plain",
-                )
-
-            # ZIP download — all four artifacts in one bundle
-            st.divider()
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("ibm_placemat.md", artifacts.get("placemat", ""))
-                zf.writestr("poc_checklist.md", artifacts.get("checklist", ""))
-                zf.writestr("architecture_summary.md", artifacts.get("architecture", ""))
-                zf.writestr("kickoff_email.txt", artifacts.get("email", ""))
-                zf.writestr("discovery_extraction.json", json.dumps(data, indent=2))
-            zip_buf.seek(0)
-            st.download_button(
-                "📦 Download all artifacts (.zip)",
-                data=zip_buf,
-                file_name="poc_artifacts.zip",
-                mime="application/zip",
-                use_container_width=True,
-                type="primary",
-            )
-
-            # TechZone environment request button (score ≥ 70 + known deployment env)
+    # Score breakdown + gaps collapsible
+    if "readiness_score" in st.session_state or "gap_check" in st.session_state:
+        with st.expander("🔍 Analysis details — score breakdown, risks & gaps", expanded=False):
             if "readiness_score" in st.session_state:
-                score = st.session_state["readiness_score"]["score"]
-                cloud_provider = data.get("deployment_env", {}).get("cloud_provider", "Unknown")
-                if score >= 70 and cloud_provider not in ("Unknown", "", None):
-                    st.divider()
-                    st.subheader("☁️ TechZone Environment")
+                score_data = st.session_state["readiness_score"]
+                breakdown = score_data["breakdown"]
+                detected_risks = score_data["detected_risks"]
+                if breakdown:
+                    st.markdown("**📉 Score deductions:**")
+                    categories: dict = {}
+                    for item in breakdown:
+                        cat = item.get("category", "Other")
+                        categories.setdefault(cat, []).append(item)
+                    for category, items in categories.items():
+                        st.markdown(f"*{category}:*")
+                        for item in items:
+                            sev = item.get("severity", "")
+                            sev_emoji = "🔴 " if sev == "High" else "🟡 " if sev == "Medium" else "🟢 " if sev == "Low" else ""
+                            st.markdown(f"- {sev_emoji}{item['item']}: **{item['points']} pts**")
+                if detected_risks:
+                    st.markdown("---")
+                    st.markdown(f"**⚠️ Risk triggers ({len(detected_risks)} categories):**")
+                    for risk_category, keywords in detected_risks.items():
+                        severity = get_risk_severity(risk_category)
+                        sev_emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                        st.markdown(f"{sev_emoji} **{risk_category}** — {', '.join(keywords[:5])}")
+            if "gap_check" in st.session_state:
+                gaps = st.session_state["gap_check"].get("gaps", [])
+                if gaps:
+                    st.markdown("---")
+                    st.markdown("**🔍 Gaps & clarification questions:**")
+                    for gap in gaps:
+                        st.markdown(f"- **{gap.get('field', '')}:** {gap.get('issue', '')}")
+                        if gap.get("question"):
+                            st.markdown(f"  - ❓ _{gap['question']}_")
+                    st.caption("Update your notes to address gaps, then re-analyse.")
 
-                    itz_status, techzone_key = _itz_token_status()
-
-                    if itz_status == "missing":
-                        st.warning(
-                            "**TechZone auth not set up.** Run this in your terminal then reload:\n\n"
-                            "```\nitz login\n```\n\n"
-                            "No `itz` installed? See the [ITZ CLI setup guide](https://github.com/cloud-native-toolkit/itzcli) "
-                            "or set `TECHZONE_API_KEY` in `.env` manually."
-                        )
-                    elif itz_status == "expired":
-                        st.warning(
-                            "**TechZone token has expired.** Refresh it by running this in your terminal then reload:\n\n"
-                            "```\nitz login\n```"
-                        )
-                    else:
-                        st.info(
-                            f"PoC readiness score is **{score}/100** · deployment environment: "
-                            f"**{cloud_provider}** — ready for TechZone provisioning."
-                        )
-                        if st.session_state.get("techzone_result"):
-                            result = st.session_state["techzone_result"]
-                            if result["success"]:
-                                st.success(f"✅ TechZone request submitted — ID: `{result['request_id']}` · Status: **{result['status']}**")
-                                with st.expander("📋 Full response", expanded=False):
-                                    st.json(result.get("raw", {}))
-                            else:
-                                err = result["error"]
-                                if "401" in err or "403" in err or "Unauthorized" in err or "token" in err.lower():
-                                    st.error(
-                                        "❌ TechZone auth failed — your token has expired.\n\n"
-                                        "Run `itz login` in your terminal then reload this page."
-                                    )
-                                else:
-                                    st.error(f"❌ TechZone request failed: {err}")
-                            if st.button("🔄 Submit another request", use_container_width=False):
-                                st.session_state.pop("techzone_result", None)
-                                st.session_state.pop("show_techzone_form", None)
-                                st.rerun()
-                        else:
-                            col_tz, _ = st.columns([1, 2])
-                            with col_tz:
-                                if st.button(
-                                    "🚀 Request TechZone environment",
-                                    type="primary",
-                                    use_container_width=True,
-                                ):
-                                    st.session_state["show_techzone_form"] = True
-
-                            if st.session_state.get("show_techzone_form"):
-                                with st.form("techzone_request_form"):
-                                    st.markdown("**TechZone Request Details**")
-
-                                    tz_purpose = st.selectbox(
-                                        "Purpose",
-                                        ["Demo", "Education", "Test", "Pilot"],
-                                        index=2,
-                                        help="Demo and Pilot require an ISC Opportunity number.",
-                                    )
-
-                                    col_sd, col_ed = st.columns(2)
-                                    with col_sd:
-                                        tz_start = st.date_input("Start date")
-                                    with col_ed:
-                                        tz_end = st.date_input("End date")
-
-                                    # ISC Opportunity — only required for Demo / Pilot
-                                    tz_opportunity = st.text_input(
-                                        "ISC Opportunity # (required for Demo / Pilot)",
-                                        placeholder="e.g. 1-ABC123456",
-                                        help="Leave blank for Education / Test reservations.",
-                                    )
-
-                                    tz_notes = st.text_area(
-                                        "Additional notes",
-                                        placeholder="Any specific requirements or context…",
-                                        height=80,
-                                    )
-
-                                    submitted = st.form_submit_button("✅ Submit to TechZone", type="primary")
-                                    if submitted:
-                                        # Validate opportunity for Demo/Pilot
-                                        if tz_purpose in ("Demo", "Pilot") and not tz_opportunity.strip():
-                                            st.error("An ISC Opportunity # is required for Demo and Pilot reservations.")
-                                        else:
-                                            start_iso = tz_start.strftime("%Y-%m-%dT00:00:00Z")
-                                            with st.spinner("Submitting TechZone request…"):
-                                                result = request_techzone_env(
-                                                    data.get("deployment_env", {}),
-                                                    tz_purpose,
-                                                    tz_notes,
-                                                    start_date=start_iso,
-                                                    end_date=tz_end.strftime("%Y-%m-%dT00:00:00Z"),
-                                                    opportunity=tz_opportunity.strip() or None,
-                                                )
-                                            st.session_state["techzone_result"] = result
-                                            st.session_state["show_techzone_form"] = False
-                                            st.rerun()
-
-            st.divider()
-
-        # Display extracted fields in 2-column grid layout
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            with st.expander("👥 Stakeholders", expanded=False):
-                if data.get("stakeholders"):
-                    for s in data["stakeholders"]:
-                        st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
-                else:
-                    st.info("No stakeholders identified")
-
-            with st.expander("🎯 Use Cases", expanded=False):
-                if data.get("use_cases"):
-                    for uc in data["use_cases"]:
-                        st.markdown(f"**{uc.get('title', 'Untitled')}**")
-                        st.markdown(f"_{uc.get('description', 'No description')}_")
-                        st.markdown("---")
-                else:
-                    st.info("No use cases identified")
-
-            with st.expander("🔗 Integrations", expanded=False):
-                if data.get("integrations"):
-                    for integ in data["integrations"]:
-                        st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
-                else:
-                    st.info("No integrations identified")
-        
+    # Confirm gate
+    if "gap_check" in st.session_state and "confirmed" not in st.session_state:
+        st.divider()
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            with st.expander("☁️ Deployment Environment", expanded=False):
-                env = data.get("deployment_env", {})
-                st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
-                st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
-                if env.get("constraints"):
-                    st.markdown(f"**Constraints:** {env.get('constraints')}")
+            if st.button("✅ Confirm and generate artifacts", type="primary", use_container_width=True):
+                st.session_state["confirmed"] = True
+                st.rerun()
+        st.info("👆 Review the analysis above, then confirm to generate artifacts in the other tabs.")
 
-            with st.expander("✅ Success Criteria", expanded=False):
-                if data.get("success_criteria"):
-                    for sc in data["success_criteria"]:
-                        st.markdown(f"- {sc}")
-                else:
-                    st.warning("No success criteria defined")
+    # Trigger artifact generation once confirmed
+    if st.session_state.get("confirmed") and "artifacts" not in st.session_state:
+        with st.spinner("Generating PoC artifacts from watsonx…"):
+            try:
+                artifacts = generate_artifacts(data, model_id=selected_model)
+                st.session_state["artifacts"] = artifacts
+            except Exception as e:
+                st.error(f"Failed to generate artifacts: {e}")
+                st.stop()
+        st.success("✅ Artifacts ready — switch to the artifact tabs above to view them.")
+        st.rerun()
 
-            with st.expander("⚠️ Risks", expanded=False):
-                if data.get("risks"):
-                    for risk in data["risks"]:
-                        severity = risk.get("severity", "Unknown")
-                        emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
-                        st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
-                else:
-                    st.info("No risks identified")
 
-            with st.expander("📋 Action Items", expanded=False):
-                if data.get("action_items"):
-                    for ai in data["action_items"]:
-                        owner = ai.get("owner", "Unassigned")
-                        task = ai.get("task", "No task description")
-                        due = ai.get("due", "TBD")
-                        st.markdown(f"- [ ] **{owner}** — {task} *(Due: {due})*")
-                else:
-                    st.info("No action items identified")
+def render_analysis_tab():
+    """Tab 2 — extracted data: stakeholders, use cases, integrations, env, risks, actions."""
+    if "extracted_data" not in st.session_state:
+        _not_ready_msg("extracted data")
+        return
 
-        # Download JSON report (only shown before artifacts are generated)
-        if not st.session_state.get("confirmed"):
-            st.divider()
-            st.download_button(
-                "⬇️ Download extraction (.json)",
-                data=json.dumps(data, indent=2),
-                file_name="discovery_extraction.json",
-                mime="application/json",
+    data = st.session_state["extracted_data"]
+    col1, col2 = st.columns(2)
+
+    with col1:
+        with st.expander("👥 Stakeholders", expanded=True):
+            if data.get("stakeholders"):
+                for s in data["stakeholders"]:
+                    st.markdown(f"**{s.get('name', 'Unknown')}** — {s.get('role', 'N/A')} at {s.get('organization', 'N/A')}")
+            else:
+                st.info("No stakeholders identified")
+
+        with st.expander("🎯 Use Cases", expanded=True):
+            if data.get("use_cases"):
+                for uc in data["use_cases"]:
+                    st.markdown(f"**{uc.get('title', 'Untitled')}**")
+                    st.markdown(f"_{uc.get('description', 'No description')}_")
+                    st.markdown("---")
+            else:
+                st.info("No use cases identified")
+
+        with st.expander("🔗 Integrations", expanded=True):
+            if data.get("integrations"):
+                for integ in data["integrations"]:
+                    st.markdown(f"**{integ.get('system', 'Unknown system')}** — {integ.get('purpose', 'No purpose specified')}")
+            else:
+                st.info("No integrations identified")
+
+    with col2:
+        with st.expander("☁️ Deployment Environment", expanded=True):
+            env = data.get("deployment_env", {})
+            st.markdown(f"**Cloud Provider:** {env.get('cloud_provider', 'Unknown')}")
+            st.markdown(f"**Region:** {env.get('region', 'Unknown')}")
+            if env.get("constraints"):
+                st.markdown(f"**Constraints:** {env.get('constraints')}")
+
+        with st.expander("✅ Success Criteria", expanded=True):
+            if data.get("success_criteria"):
+                for sc in data["success_criteria"]:
+                    st.markdown(f"- {sc}")
+            else:
+                st.warning("No success criteria defined")
+
+        with st.expander("⚠️ Risks", expanded=True):
+            if data.get("risks"):
+                for risk in data["risks"]:
+                    severity = risk.get("severity", "Unknown")
+                    emoji = "🔴" if severity == "High" else "🟡" if severity == "Medium" else "🟢"
+                    st.markdown(f"{emoji} **{severity}:** {risk.get('risk', 'No description')}")
+            else:
+                st.info("No risks identified")
+
+        with st.expander("📋 Action Items", expanded=True):
+            if data.get("action_items"):
+                for ai in data["action_items"]:
+                    st.markdown(f"- [ ] **{ai.get('owner', 'Unassigned')}** — {ai.get('task', '')} *(Due: {ai.get('due', 'TBD')})*")
+            else:
+                st.info("No action items identified")
+
+    st.divider()
+    st.download_button(
+        "⬇️ Download extraction (.json)",
+        data=json.dumps(data, indent=2),
+        file_name="discovery_extraction.json",
+        mime="application/json",
+    )
+
+
+def _artifact_tab(artifact_key: str, filename: str, mime: str, label: str):
+    """Shared renderer for the four artifact tabs."""
+    if "artifacts" not in st.session_state:
+        if st.session_state.get("confirmed"):
+            st.info("⏳ Artifacts are still generating — please wait and reload.")
+        else:
+            _not_ready_msg(label)
+        return
+    artifacts = st.session_state["artifacts"]
+    content = artifacts.get(artifact_key, "")
+    if not content:
+        st.warning(f"No {label} was generated.")
+        return
+    st.markdown(content)
+    st.divider()
+    st.download_button(f"⬇️ Download {label}", data=content, file_name=filename, mime=mime)
+
+
+def render_techzone_tab():
+    """Tab 6 — TechZone environment provisioning."""
+    if "extracted_data" not in st.session_state or "readiness_score" not in st.session_state:
+        _not_ready_msg("TechZone provisioning options")
+        return
+
+    data = st.session_state["extracted_data"]
+    score = st.session_state["readiness_score"]["score"]
+    cloud_provider = data.get("deployment_env", {}).get("cloud_provider", "Unknown")
+
+    if score < 70 or cloud_provider in ("Unknown", "", None):
+        st.warning(
+            f"PoC readiness score is **{score}/100** "
+            + (f"and cloud provider is **{cloud_provider}**. " if cloud_provider not in ("Unknown", "", None) else "(cloud provider not detected). ")
+            + "Score must be ≥ 70 and a cloud provider must be detected to provision a TechZone environment."
+        )
+        return
+
+    itz_status, techzone_key = _itz_token_status()
+
+    if itz_status == "missing":
+        st.warning(
+            "**TechZone auth not set up.** Run this in your terminal then reload:\n\n"
+            "```\nitz login\n```\n\n"
+            "No `itz` installed? See the [ITZ CLI setup guide](https://github.com/cloud-native-toolkit/itzcli) "
+            "or set `TECHZONE_API_KEY` in `.env` manually."
+        )
+        return
+    elif itz_status == "expired":
+        st.warning(
+            "**TechZone token has expired.** Refresh it by running this in your terminal then reload:\n\n"
+            "```\nitz login\n```"
+        )
+        return
+
+    st.info(
+        f"PoC readiness score is **{score}/100** · deployment environment: "
+        f"**{cloud_provider}** — ready for TechZone provisioning."
+    )
+
+    if st.session_state.get("techzone_result"):
+        result = st.session_state["techzone_result"]
+        if result["success"]:
+            st.success(f"✅ TechZone request submitted — ID: `{result['request_id']}` · Status: **{result['status']}**")
+            with st.expander("📋 Full response", expanded=False):
+                st.json(result.get("raw", {}))
+        else:
+            err = result["error"]
+            if "401" in err or "403" in err or "Unauthorized" in err or "token" in err.lower():
+                st.error("❌ TechZone auth failed — your token has expired.\n\nRun `itz login` in your terminal then reload this page.")
+            else:
+                st.error(f"❌ TechZone request failed: {err}")
+        if st.button("🔄 Submit another request"):
+            st.session_state.pop("techzone_result", None)
+            st.session_state.pop("show_techzone_form", None)
+            st.rerun()
+        return
+
+    col_tz, _ = st.columns([1, 2])
+    with col_tz:
+        if st.button("🚀 Request TechZone environment", type="primary", use_container_width=True):
+            st.session_state["show_techzone_form"] = True
+
+    if st.session_state.get("show_techzone_form"):
+        _TZ_PLATFORMS = {
+            "watsonx Orchestrate on IBM Cloud (69caed7...)": "69caed724b629d96da28b7a3",
+            "watsonx.ai on IBM Cloud (ibmcloud)":            "ibmcloud",
+            "watsonx on Azure":                              "azure",
+            "watsonx on AWS":                                "aws",
+        }
+        with st.form("techzone_request_form"):
+            st.markdown("**TechZone Request Details**")
+
+            tz_platform_label = st.selectbox(
+                "TechZone platform",
+                list(_TZ_PLATFORMS.keys()),
+                help="Select the TechZone environment to provision.",
             )
+            tz_purpose = st.selectbox(
+                "Purpose",
+                ["Demo", "Education", "Test", "Pilot"],
+                index=2,
+                help="Demo and Pilot require an ISC Opportunity number.",
+            )
+            col_sd, col_ed = st.columns(2)
+            with col_sd:
+                tz_start = st.date_input("Start date")
+            with col_ed:
+                tz_end = st.date_input("End date")
+            tz_opportunity = st.text_input(
+                "ISC Opportunity # (required for Demo / Pilot)",
+                placeholder="e.g. 1-ABC123456",
+                help="Leave blank for Education / Test reservations.",
+            )
+            tz_notes = st.text_area(
+                "Additional notes",
+                placeholder="Any specific requirements or context…",
+                height=80,
+            )
+            submitted = st.form_submit_button("✅ Submit to TechZone", type="primary")
+            if submitted:
+                if tz_purpose in ("Demo", "Pilot") and not tz_opportunity.strip():
+                    st.error("An ISC Opportunity # is required for Demo and Pilot reservations.")
+                else:
+                    env = data.get("deployment_env", {})
+                    env["platform_id"] = _TZ_PLATFORMS[tz_platform_label]
+                    with st.spinner("Submitting TechZone request…"):
+                        result = request_techzone_env(
+                            env,
+                            tz_purpose,
+                            tz_notes,
+                            start_date=tz_start.strftime("%Y-%m-%dT00:00:00Z"),
+                            end_date=tz_end.strftime("%Y-%m-%dT00:00:00Z"),
+                            opportunity=tz_opportunity.strip() or None,
+                        )
+                    st.session_state["techzone_result"] = result
+                    st.session_state["show_techzone_form"] = False
+                    st.rerun()
 
 
 def render_demo_tab():
@@ -1601,13 +1540,59 @@ def main():
                 st.caption("🚫 Significant gaps")
             st.progress(score / 100)
 
-    analyzer_tab, demo_tab = st.tabs(["🔬 PoC Analyzer", "🎬 Demo"])
+    tab_analyzer, tab_analysis, tab_placemat, tab_checklist, tab_arch, tab_email, tab_tz = st.tabs([
+        "🔬 Analyzer",
+        "📊 Analysis",
+        "📋 IBM Placemat",
+        "✅ PoC Checklist",
+        "🏗️ Architecture",
+        "📧 Kickoff Email",
+        "☁️ TechZone",
+    ])
 
-    with analyzer_tab:
+    with tab_analyzer:
         render_analyzer_tab(selected_model)
 
-    with demo_tab:
-        render_demo_tab()
+    with tab_analysis:
+        render_analysis_tab()
+
+    with tab_placemat:
+        _artifact_tab("placemat", "ibm_placemat.md", "text/markdown", "IBM Placemat")
+
+    with tab_checklist:
+        _artifact_tab("checklist", "poc_checklist.md", "text/markdown", "PoC Checklist")
+
+    with tab_arch:
+        _artifact_tab("architecture", "architecture_summary.md", "text/markdown", "Architecture Summary")
+
+    with tab_email:
+        _artifact_tab("email", "kickoff_email.txt", "text/plain", "Kickoff Email")
+
+    with tab_tz:
+        render_techzone_tab()
+
+    # ZIP download — shown in sidebar once artifacts are ready
+    if "artifacts" in st.session_state and "extracted_data" in st.session_state:
+        with st.sidebar:
+            st.divider()
+            data = st.session_state["extracted_data"]
+            artifacts = st.session_state["artifacts"]
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("ibm_placemat.md", artifacts.get("placemat", ""))
+                zf.writestr("poc_checklist.md", artifacts.get("checklist", ""))
+                zf.writestr("architecture_summary.md", artifacts.get("architecture", ""))
+                zf.writestr("kickoff_email.txt", artifacts.get("email", ""))
+                zf.writestr("discovery_extraction.json", json.dumps(data, indent=2))
+            zip_buf.seek(0)
+            st.download_button(
+                "📦 Download all artifacts (.zip)",
+                data=zip_buf,
+                file_name="poc_artifacts.zip",
+                mime="application/zip",
+                use_container_width=True,
+                type="primary",
+            )
 
 
 if __name__ == "__main__":
