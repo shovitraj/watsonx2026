@@ -1,0 +1,22 @@
+Anton, Tina, Kenny (+SCE invitees who could not attend),
+
+Thank you for the time yesterday and for walking us through GDAS 2.1 in such depth. The candor about where the platform stands, and the invitation to poke holes, made this one of the most productive working sessions we've had. Attached are the charts we presented and screen shots of the demo.
+
+Summary of what we heard and agreed below; please correct anything I've mischaracterized.
+
+WHAT WE TOOK AWAY
+GDAS 2.1 heads to production in roughly a month, running on open source tooling your team is maintaining under significant monthly compliance overhead. Our watsonx.data discussion centered on augmenting that stack [not replacing it] with enterprise-supported versions of the same tools (Kafka, Fink, Spark, Presto, Airflow, Iceberg), OpenSearch for the vector database gap, and governance built in at ingestion.
+
+A potential PoV would run in your QA environment: container-based on OpenShift/Kubernetes on hardware you designate, air-gapped installation supported, in a 30/60/90-day increment with success criteria we define together. A GPU optimized, air gapped, approach  with a 5 year roadmap visibility with commitments leveraging your existing investments. As a Horizon account, IBM brings on-site engineers and knowledge transfer at no cost, plus an optional Business Value Assessment so the outcome is a proven business case in your own data.
+
+Candidate starting points you mentioned: with the option to graduate to a deeper QA data use case. Kiyu's suggestion stands: the intent-to-insights technique can be applied to a current use-case (overtime dataset) now as a fast proof pattern.
+
+WHAT WE OWE YOU (this week)
+Kiyu's presentation deck,  feel free to route to Matt given his interest in the NVIDIA integration.
+Curated value statements ahead of any full BVA.
+watsonx.data PoV requirements: OpenShift/Kubernetes specs, air-gap installation packages, and container scanning details for your pipeline.
+
+WHAT WE DISCUSSED ON YOUR SIDE (no rush — just capturing)
+Socializing next steps with your leadership and checking team cycles with Matt and Dave.
+QA environment server configurations/capacity when you're ready for sizing.
+The BRD/SAD requirements summary you offered to share.
