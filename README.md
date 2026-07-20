@@ -9,7 +9,7 @@ Also ships as a **FastMCP server** so any MCP-capable agent can call the analysi
 - **🔬 PoC Analyzer tab** — paste or upload meeting notes, get structured extraction, gap check, readiness score (0–100), and four generated artifacts
 - **🎬 Demo tab** — instant pre-baked walkthrough with no API calls (great for demos)
 - **📦 ZIP download** — all four artifacts + raw JSON in one bundle
-- **☁️ TechZone integration** — live environment provisioning request via TechZone MCP API (requires `TECHZONE_API_KEY`)
+- **☁️ TechZone integration** — live environment provisioning via the IBM-hosted TechZone MCP server; auth via `itz login` (no API key needed)
 - **🤖 MCP server** — `mcp_server.py` exposes `analyze_notes`, `check_gaps`, `generate_artifacts` as MCP tools
 
 ---
@@ -64,7 +64,7 @@ Open `.env` and fill in the required values:
 | `WATSONX_API_KEY` | ✅ | [IBM Cloud](https://cloud.ibm.com) → Manage → Access (IAM) → API keys |
 | `WATSONX_PROJECT_ID` | ✅ | [watsonx.ai](https://dataplatform.cloud.ibm.com) → your project → Manage → General → Project ID |
 | `WATSONX_URL` | optional | Default: `https://us-south.ml.cloud.ibm.com` — change for other regions (see below) |
-| `TECHZONE_API_KEY` | optional | [techzone.ibm.com](https://techzone.ibm.com) → your profile → API keys |
+| `TECHZONE_API_KEY` | optional | Only needed to override the `itz` JWT — see TechZone section below |
 | `TECHZONE_MCP_URL` | optional | Override TechZone MCP endpoint — default is pre-set, no change needed |
 
 **watsonx.ai regions:**
@@ -146,6 +146,54 @@ watsonx2026/
 
 ---
 
+## TechZone Integration
+
+The app connects to the **IBM-hosted TechZone MCP server** — no deployment required.
+
+**MCP server URL:**
+```
+https://mcp.techzone.ibm.com/servers/c7442b81221647c3b36c75df4f2f88e8/mcp
+```
+
+### Auth — itz CLI (recommended)
+
+Install the [ITZ CLI](https://github.com/cloud-native-toolkit/itzcli) and log in once:
+
+```bash
+# Mac (Apple Silicon)
+curl -sL https://github.com/cloud-native-toolkit/itzcli/releases/download/v0.1.29/itzcli-darwin-amd64.tar.gz -o /tmp/itzcli.tar.gz \
+  && tar -xzf /tmp/itzcli.tar.gz -C /tmp/ \
+  && sudo mv /tmp/itz /tmp/itzcli /usr/local/bin/
+
+itz login   # opens browser for IBM w3id SSO
+```
+
+The app automatically reads the JWT from `~/.itz/cli-config.yaml` — no `.env` changes needed.
+
+To refresh the token (expires every ~8 hours):
+```bash
+itz login
+```
+
+### Auth — manual override
+
+If you prefer not to use the ITZ CLI, set `TECHZONE_API_KEY` in `.env` with the JWT value:
+```bash
+grep token ~/.itz/cli-config.yaml | awk '{print $2}'
+```
+
+### Connecting to watsonx Orchestrate
+
+Add the TechZone MCP server as a tool in watsonx Orchestrate:
+
+1. Go to **Tools → Add tool → MCP Server**
+2. **URL:** `https://mcp.techzone.ibm.com/servers/c7442b81221647c3b36c75df4f2f88e8/mcp`
+3. **Transport:** `Streamable HTTP`
+4. **Connection:** create a new connection with `No authentication` + Runtime Parameter `TechZone-Token` = your JWT
+5. All 14 TechZone tools are auto-discovered
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -154,4 +202,5 @@ watsonx2026/
 | `Missing environment variables` | Copy `.env.example` → `.env` and fill in credentials |
 | `Failed to parse watsonx response as JSON` | Try a different model — Granite instruct models are most reliable |
 | TechZone button not appearing | Score must be ≥ 70 and cloud provider must be detected (not "Unknown") |
-| TechZone button shows info message | Add `TECHZONE_API_KEY` to `.env` |
+| TechZone button shows info message | Run `itz login` in terminal or set `TECHZONE_API_KEY` in `.env` |
+| TechZone auth error after a few hours | JWT expired — run `itz login` to refresh |
