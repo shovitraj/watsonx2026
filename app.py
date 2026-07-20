@@ -614,7 +614,14 @@ def get_techzone_jwt() -> str:
         return ""
 
 
-def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict:
+def request_techzone_env(
+    deployment_env: dict,
+    purpose: str,
+    notes: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    opportunity: str | None = None,
+) -> dict:
     """
     Submit a TechZone environment request via the TechZone MCP HTTP endpoint.
 
@@ -637,7 +644,17 @@ def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict
     else:
         geography = "americas"
 
-    start_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start_utc = start_date or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    arguments: dict = {
+        "platformId": deployment_env.get("cloud_provider", "ibmcloud"),
+        "start": start_utc,
+        "bearerToken": api_key,
+        "purpose": purpose,
+        "geography": geography,
+    }
+    if opportunity:
+        arguments["opportunity"] = opportunity
 
     payload = {
         "jsonrpc": "2.0",
@@ -645,13 +662,7 @@ def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict
         "method": "tools/call",
         "params": {
             "name": "request-mcp-techzone-create-request",
-            "arguments": {
-                "platformId": deployment_env.get("cloud_provider", "ibmcloud"),
-                "start": start_utc,
-                "bearerToken": api_key,
-                "purpose": purpose,
-                "geography": geography,
-            },
+            "arguments": arguments,
         },
     }
 
@@ -662,6 +673,7 @@ def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict
             headers={
                 "TechZone-Token": api_key,
                 "Content-Type": "application/json",
+                "Accept": "application/json",
             },
             timeout=30,
         )
@@ -1041,27 +1053,52 @@ def render_analyzer_tab(selected_model: str):
                             if st.session_state.get("show_techzone_form"):
                                 with st.form("techzone_request_form"):
                                     st.markdown("**TechZone Request Details**")
+
                                     tz_purpose = st.selectbox(
                                         "Purpose",
                                         ["Demo", "Education", "Test", "Pilot"],
                                         index=2,
+                                        help="Demo and Pilot require an ISC Opportunity number.",
                                     )
+
+                                    col_sd, col_ed = st.columns(2)
+                                    with col_sd:
+                                        tz_start = st.date_input("Start date")
+                                    with col_ed:
+                                        tz_end = st.date_input("End date")
+
+                                    # ISC Opportunity — only required for Demo / Pilot
+                                    tz_opportunity = st.text_input(
+                                        "ISC Opportunity # (required for Demo / Pilot)",
+                                        placeholder="e.g. 1-ABC123456",
+                                        help="Leave blank for Education / Test reservations.",
+                                    )
+
                                     tz_notes = st.text_area(
                                         "Additional notes",
                                         placeholder="Any specific requirements or context…",
                                         height=80,
                                     )
+
                                     submitted = st.form_submit_button("✅ Submit to TechZone", type="primary")
                                     if submitted:
-                                        with st.spinner("Submitting TechZone request…"):
-                                            result = request_techzone_env(
-                                                data.get("deployment_env", {}),
-                                                tz_purpose,
-                                                tz_notes,
-                                            )
-                                        st.session_state["techzone_result"] = result
-                                        st.session_state["show_techzone_form"] = False
-                                        st.rerun()
+                                        # Validate opportunity for Demo/Pilot
+                                        if tz_purpose in ("Demo", "Pilot") and not tz_opportunity.strip():
+                                            st.error("An ISC Opportunity # is required for Demo and Pilot reservations.")
+                                        else:
+                                            start_iso = tz_start.strftime("%Y-%m-%dT00:00:00Z")
+                                            with st.spinner("Submitting TechZone request…"):
+                                                result = request_techzone_env(
+                                                    data.get("deployment_env", {}),
+                                                    tz_purpose,
+                                                    tz_notes,
+                                                    start_date=start_iso,
+                                                    end_date=tz_end.strftime("%Y-%m-%dT00:00:00Z"),
+                                                    opportunity=tz_opportunity.strip() or None,
+                                                )
+                                            st.session_state["techzone_result"] = result
+                                            st.session_state["show_techzone_form"] = False
+                                            st.rerun()
 
             st.divider()
 

@@ -2,7 +2,7 @@
   "mcpServers": {
     "bob-marketplace": {
       "type": "streamable-http",
-      "url": "http://127.0.0.1:62744/mcp",
+      "url": "http://127.0.0.1:39247/mcp",
       "headers": {
         "Bob-Marketplace-Token": "bob-marketplace-local"
       },
@@ -17,7 +17,8 @@
       "type": "streamable-http",
       "url": "https://mcp.techzone.ibm.com/servers/c7442b81221647c3b36c75df4f2f88e8/mcp",
       "headers": {
-        "TechZone-Token": "z6r5ue6nwi5jrfcg6mybbnpse6fxgod9vgiexuf3u4mwxgk71bc26way2v1aywtz"
+        "TechZone-Token": "z6r5ue6nwi5jrfcg6mybbnpse6fxgod9vgiexuf3u4mwxgk71bc26way2v1aywtz",
+        "Accept": "application/json"
       },
       "disabled": false,
       "alwaysAllow": [
