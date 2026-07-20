@@ -592,6 +592,28 @@ TECHZONE_MCP_URL = os.getenv(
 )
 
 
+def get_techzone_jwt() -> str:
+    """
+    Resolve TechZone JWT for API auth.
+
+    Priority:
+      1. TECHZONE_API_KEY env var (explicit override)
+      2. ~/.itz/cli-config.yaml techzone.api.token (written by `itz login`)
+    Returns empty string if neither is available.
+    """
+    key = os.getenv("TECHZONE_API_KEY", "")
+    if key:
+        return key
+    try:
+        import yaml
+        itz_config = os.path.expanduser("~/.itz/cli-config.yaml")
+        with open(itz_config) as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("techzone", {}).get("api", {}).get("token", "")
+    except Exception:
+        return ""
+
+
 def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict:
     """
     Submit a TechZone environment request via the TechZone MCP HTTP endpoint.
@@ -602,9 +624,9 @@ def request_techzone_env(deployment_env: dict, purpose: str, notes: str) -> dict
     import httpx
     from datetime import datetime, timezone
 
-    api_key = os.getenv("TECHZONE_API_KEY", "")
+    api_key = get_techzone_jwt()
     if not api_key:
-        return {"success": False, "error": "TECHZONE_API_KEY not set"}
+        return {"success": False, "error": "No TechZone token found — run `itz login` in your terminal or set TECHZONE_API_KEY in .env"}
 
     # Derive geography from region string (best-effort)
     region = (deployment_env.get("region") or "").lower()
@@ -983,11 +1005,11 @@ def render_analyzer_tab(selected_model: str):
                     st.divider()
                     st.subheader("☁️ TechZone Environment")
 
-                    techzone_key = os.getenv("TECHZONE_API_KEY", "")
+                    techzone_key = get_techzone_jwt()
                     if not techzone_key:
                         st.info(
-                            "PoC readiness score is **{}/100** — set `TECHZONE_API_KEY` in `.env` "
-                            "to enable live TechZone provisioning.".format(score)
+                            "PoC readiness score is **{}/100** — run `itz login` in your terminal "
+                            "(or set `TECHZONE_API_KEY` in `.env`) to enable live TechZone provisioning.".format(score)
                         )
                     else:
                         st.info(
