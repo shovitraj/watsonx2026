@@ -614,6 +614,36 @@ def get_techzone_jwt() -> str:
         return ""
 
 
+def _itz_token_status() -> tuple[str, str]:
+    """
+    Return (status, token) where status is one of:
+      'ok'       — valid, non-expired token found
+      'expired'  — token found but JWT exp has passed
+      'missing'  — no token at all (itz not installed or never logged in)
+    """
+    import base64
+    from datetime import datetime, timezone
+
+    token = get_techzone_jwt()
+    if not token:
+        return "missing", ""
+
+    # Decode JWT payload (no signature verification needed — just check exp)
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return "ok", token  # not a JWT — treat as opaque key, assume valid
+        padding = 4 - len(parts[1]) % 4
+        payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * padding))
+        exp = payload.get("exp", 0)
+        if exp and datetime.now(timezone.utc).timestamp() > exp:
+            return "expired", token
+    except Exception:
+        pass  # if decode fails, assume valid
+
+    return "ok", token
+
+
 def request_techzone_env(
     deployment_env: dict,
     purpose: str,
@@ -1017,15 +1047,23 @@ def render_analyzer_tab(selected_model: str):
                     st.divider()
                     st.subheader("☁️ TechZone Environment")
 
-                    techzone_key = get_techzone_jwt()
-                    if not techzone_key:
-                        st.info(
-                            "PoC readiness score is **{}/100** — run `itz login` in your terminal "
-                            "(or set `TECHZONE_API_KEY` in `.env`) to enable live TechZone provisioning.".format(score)
+                    itz_status, techzone_key = _itz_token_status()
+
+                    if itz_status == "missing":
+                        st.warning(
+                            "**TechZone auth not set up.** Run this in your terminal then reload:\n\n"
+                            "```\nitz login\n```\n\n"
+                            "No `itz` installed? See the [ITZ CLI setup guide](https://github.com/cloud-native-toolkit/itzcli) "
+                            "or set `TECHZONE_API_KEY` in `.env` manually."
+                        )
+                    elif itz_status == "expired":
+                        st.warning(
+                            "**TechZone token has expired.** Refresh it by running this in your terminal then reload:\n\n"
+                            "```\nitz login\n```"
                         )
                     else:
                         st.info(
-                            f"PoC readiness score is **{score}/100** and deployment environment is "
+                            f"PoC readiness score is **{score}/100** · deployment environment: "
                             f"**{cloud_provider}** — ready for TechZone provisioning."
                         )
                         if st.session_state.get("techzone_result"):
@@ -1035,7 +1073,14 @@ def render_analyzer_tab(selected_model: str):
                                 with st.expander("📋 Full response", expanded=False):
                                     st.json(result.get("raw", {}))
                             else:
-                                st.error(f"❌ TechZone request failed: {result['error']}")
+                                err = result["error"]
+                                if "401" in err or "403" in err or "Unauthorized" in err or "token" in err.lower():
+                                    st.error(
+                                        "❌ TechZone auth failed — your token has expired.\n\n"
+                                        "Run `itz login` in your terminal then reload this page."
+                                    )
+                                else:
+                                    st.error(f"❌ TechZone request failed: {err}")
                             if st.button("🔄 Submit another request", use_container_width=False):
                                 st.session_state.pop("techzone_result", None)
                                 st.session_state.pop("show_techzone_form", None)
